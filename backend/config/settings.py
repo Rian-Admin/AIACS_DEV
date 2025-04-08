@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-import django_heroku
 import sys
 from datetime import datetime
 
@@ -177,9 +176,6 @@ STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),  # 실제 정적 파일이 있는 경로로 수정
 ]
 STATIC_URL = '/static/'
-
-# Heroku 설정
-django_heroku.settings(locals())
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(BASE_DIR)

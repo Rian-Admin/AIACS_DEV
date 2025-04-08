@@ -111,8 +111,8 @@ const CameraModal = ({ showCameraModal, setShowCameraModal, language = 'ko' }) =
           {/* 카메라 썸네일 목록 */}
           <Grid item xs={12}>
             <Grid container spacing={1} sx={{ mt: 1 }}>
-              {cameras.map((camera) => (
-                <Grid item xs={4} key={camera.id}>
+              {cameras.slice(0, 1).map((camera) => (
+                <Grid item xs={12} key={camera.id}>
                   <Box
                     onClick={() => setSelectedCamera(camera.id)}
                     sx={{

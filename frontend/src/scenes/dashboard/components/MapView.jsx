@@ -802,7 +802,7 @@ const MapView = ({
                   gap: 1 // 카메라 간격도 줄임
                 }}
               >
-                {cameras.slice(0, 3).map((camera) => (
+                {cameras.slice(0, 1).map((camera) => (
                   <Paper
                     key={camera.id}
                     elevation={3}
@@ -843,8 +843,8 @@ const MapView = ({
           }}
         >
           <Grid container spacing={1} sx={{ height: '100%' }}>
-            {cameras.map((cam) => (
-              <Grid key={cam.id} item xs={6} sx={{ height: '50%' }}>
+            {cameras.slice(0, 1).map((cam) => (
+              <Grid key={cam.id} item xs={12} sx={{ height: '100%' }}>
                 <CameraStream
                   cameraId={cam.id}
                   title={translate(`카메라 ${cam.id}`, `Camera ${cam.id}`, language)}
