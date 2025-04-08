@@ -640,8 +640,8 @@ const MapRadarOverlay = ({ language }) => {
     // 버퍼 캔버스 초기화
     if (!bufferCanvasRef.current) {
       bufferCanvasRef.current = document.createElement('canvas');
-      bufferCanvasRef.current.width = 3000; // 해상도 증가
-      bufferCanvasRef.current.height = 3000; // 해상도 증가
+      bufferCanvasRef.current.width = 2000; // 해상도 수정 (3000 -> 2000)
+      bufferCanvasRef.current.height = 2000; // 해상도 수정 (3000 -> 2000)
     }
     
     // 레이더 위치를 LatLng 객체로 변환
@@ -650,8 +650,12 @@ const MapRadarOverlay = ({ language }) => {
     // 레이더 범위를 맵에 맞게 조정
     const bounds = calculateRadarBounds(radarLatLng, maxRadarRange, map);
     
-    // 새 오버레이 생성
-    overlayRef.current = L.imageOverlay(canvasRef.current.toDataURL(), bounds, {
+    // 초기 캔버스 그리기
+    drawRadarOverlay();
+    
+    // 새 오버레이 생성 (초기 이미지 설정)
+    const initialImageUrl = canvasRef.current.toDataURL();
+    overlayRef.current = L.imageOverlay(initialImageUrl, bounds, {
       opacity: 0.9, // 불투명도 증가
       interactive: false,
     }).addTo(map);
@@ -672,20 +676,18 @@ const MapRadarOverlay = ({ language }) => {
     
     // 맵 이동 중 이벤트
     const handleMove = debounce(() => {
-      if (!isUpdatingRef.current && isMoving) {
+      if (isMoving && !isUpdatingRef.current) {
         // 이동 중에는 경계만 업데이트하고 이미지는 유지
         updateOverlayBoundsOnly();
       }
     }, 10); // 빠른 반응을 위해 10ms로 설정
     
     // 맵 이동/줌 종료 이벤트
-    const handleMoveEnd = debounce(() => {
+    const handleMoveEnd = () => {
       isMoving = false;
-      if (!isUpdatingRef.current) {
-        // 이동이 완료된 후에만 전체 오버레이 업데이트
-        updateOverlay(true);
-      }
-    }, 200); // 이동이 완전히 끝난 후 업데이트하도록 200ms로 설정
+      // 이동이 완료된 후에는 경계만 업데이트 (이미지는 유지)
+      updateOverlayBoundsOnly();
+    };
     
     // 이벤트 리스너 등록
     map.on('movestart', handleMoveStart);
@@ -694,9 +696,6 @@ const MapRadarOverlay = ({ language }) => {
     map.on('zoomstart', handleMoveStart);
     map.on('zoom', handleMove);
     map.on('zoomend', handleMoveEnd);
-    
-    // 첫 번째 오버레이 그리기
-    drawRadarOverlay();
     
     return () => {
       // 이벤트 리스너 제거
@@ -723,43 +722,6 @@ const MapRadarOverlay = ({ language }) => {
     
     // 이미지는 유지하고 경계만 업데이트
     overlayRef.current.setBounds(bounds);
-  };
-  
-  // 오버레이 업데이트 함수
-  const updateOverlay = (fullUpdate = false) => {
-    if (!map || !overlayRef.current || !canvasRef.current) return;
-    
-    // 업데이트 플래그 설정
-    isUpdatingRef.current = true;
-    
-    const radarLatLng = L.latLng(radarPosition.latitude, radarPosition.longitude);
-    const bounds = calculateRadarBounds(radarLatLng, maxRadarRange, map);
-    
-    // 경계 먼저 업데이트
-    overlayRef.current.setBounds(bounds);
-    
-    // 전체 업데이트가 필요한 경우에만 이미지도 업데이트
-    if (fullUpdate) {
-      // 버퍼 캔버스에 그리기
-      drawRadarOverlay();
-      
-      // 새 이미지 URL 생성
-      const newUrl = canvasRef.current.toDataURL();
-      
-      // 이미지 미리 로드
-      const img = new Image();
-      img.onload = () => {
-        // 새 이미지 적용
-        overlayRef.current.setUrl(newUrl);
-        
-        // 업데이트 플래그 해제
-        isUpdatingRef.current = false;
-      };
-      img.src = newUrl;
-    } else {
-      // 경계만 업데이트한 경우 바로 플래그 해제
-      isUpdatingRef.current = false;
-    }
   };
   
   // 디바운스 함수 구현
@@ -791,82 +753,102 @@ const MapRadarOverlay = ({ language }) => {
     return () => clearInterval(updateInterval);
   }, [alarmPausedUntil]);
   
-  // 레이더 데이터 변경 시 오버레이만 업데이트
+  // 레이더 데이터 변경 시 오버레이 이미지만 업데이트
   useEffect(() => {
     if (!map || !canvasRef.current || !overlayRef.current) return;
     
     // 업데이트 플래그 설정
     isUpdatingRef.current = true;
     
-    // 버퍼 캔버스에 레이더 데이터 그리기
-    drawRadarOverlay();
-    
-    // 오버레이 이미지 업데이트 (경계는 업데이트하지 않음)
-    const canvas = canvasRef.current;
-    const dataUrl = canvas.toDataURL();
-    
-    // 이미지 미리 로드하여 깜빡임 방지
-    const img = new Image();
-    img.onload = () => {
-      overlayRef.current.setUrl(dataUrl);
-      isUpdatingRef.current = false;
-    };
-    img.src = dataUrl;
-    
-    // 경보 처리 로직
-    if (isAlarmEnabled) {
-      let tracksInsideAlarmRadius = 0;
-      let plotsInsideAlarmRadius = 0;
+    try {
+      // 버퍼 캔버스에 레이더 데이터 그리기
+      drawRadarOverlay();
       
-      // 트랙 데이터 확인
-      if (radarData.tracks && radarData.tracks.length > 0) {
-        radarData.tracks.forEach(track => {
-          if (track.position && Array.isArray(track.position) && track.position.length >= 2) {
-            const [x, y] = track.position;
-            const range = Math.sqrt(x * x + y * y);
-            
-            if (range <= alarmDistance) {
-              tracksInsideAlarmRadius++;
+      // 이미지 생성은 메인 스레드를 차단하지 않도록 최적화
+      requestAnimationFrame(() => {
+        // 오버레이 이미지 업데이트 (경계는 업데이트하지 않음)
+        const canvas = canvasRef.current;
+        const dataUrl = canvas.toDataURL();
+        
+        // 이미지 미리 로드하여 깜빡임 방지
+        const img = new Image();
+        img.onload = () => {
+          if (overlayRef.current) {
+            overlayRef.current.setUrl(dataUrl);
+          }
+          isUpdatingRef.current = false;
+        };
+        img.onerror = () => {
+          console.error('레이더 이미지 로드 오류');
+          isUpdatingRef.current = false;
+        };
+        img.src = dataUrl;
+      });
+      
+      // 경보 처리 로직
+      if (isAlarmEnabled) {
+        let tracksInsideAlarmRadius = 0;
+        let plotsInsideAlarmRadius = 0;
+        
+        // 트랙 데이터 확인
+        if (radarData.tracks && radarData.tracks.length > 0) {
+          radarData.tracks.forEach(track => {
+            if (track.position && Array.isArray(track.position) && track.position.length >= 2) {
+              const [x, y] = track.position;
+              const range = Math.sqrt(x * x + y * y);
+              
+              if (range <= alarmDistance) {
+                tracksInsideAlarmRadius++;
+              }
             }
-          }
-        });
-      }
-      
-      // 플롯 데이터 확인
-      if (radarData.plots && radarData.plots.length > 0) {
-        radarData.plots.forEach(plot => {
-          if (plot.position && Array.isArray(plot.position) && plot.position.length >= 2) {
-            const [x, y] = plot.position;
-            const range = Math.sqrt(x * x + y * y);
-            
-            if (range <= alarmDistance) {
-              plotsInsideAlarmRadius++;
-            }
-          }
-        });
-      }
-      
-      const totalObjectsInsideAlarmRadius = tracksInsideAlarmRadius + plotsInsideAlarmRadius;
-      
-      // 경보가 일시 중지되었는지 확인
-      const isAlarmPaused = alarmPausedUntil && new Date() < alarmPausedUntil;
-      
-      // 경보 상태 업데이트
-      if (totalObjectsInsideAlarmRadius > 0 && !isAlarmPaused) {
-        if (!isAlarmTriggered) {
-          // 처음 경보가 발생할 때
-          setIsAlarmTriggered(true);
-          // 경보음 재생
-          if (alarmSoundRef.current) {
-            alarmSoundRef.current.play().catch(err => console.error('경보음 재생 실패:', err));
-          }
+          });
         }
         
-        // 경보 발생 여부와 관계없이 항상 메시지 업데이트
-        // 이렇게 하면 경보 거리를 변경하거나 새 객체가 감지될 때 메시지가 업데이트됨
-        showMapAlertMessage(map, tracksInsideAlarmRadius, plotsInsideAlarmRadius);
+        // 플롯 데이터 확인
+        if (radarData.plots && radarData.plots.length > 0) {
+          radarData.plots.forEach(plot => {
+            if (plot.position && Array.isArray(plot.position) && plot.position.length >= 2) {
+              const [x, y] = plot.position;
+              const range = Math.sqrt(x * x + y * y);
+              
+              if (range <= alarmDistance) {
+                plotsInsideAlarmRadius++;
+              }
+            }
+          });
+        }
+        
+        const totalObjectsInsideAlarmRadius = tracksInsideAlarmRadius + plotsInsideAlarmRadius;
+        
+        // 경보가 일시 중지되었는지 확인
+        const isAlarmPaused = alarmPausedUntil && new Date() < alarmPausedUntil;
+        
+        // 경보 상태 업데이트
+        if (totalObjectsInsideAlarmRadius > 0 && !isAlarmPaused) {
+          if (!isAlarmTriggered) {
+            // 처음 경보가 발생할 때
+            setIsAlarmTriggered(true);
+            // 경보음 재생
+            if (alarmSoundRef.current) {
+              alarmSoundRef.current.play().catch(err => console.error('경보음 재생 실패:', err));
+            }
+          }
+          
+          // 경보 발생 여부와 관계없이 항상 메시지 업데이트
+          showMapAlertMessage(map, tracksInsideAlarmRadius, plotsInsideAlarmRadius);
+        } else if (isAlarmTriggered) {
+          // 경보 거리 내에 객체가 없는데 경보가 활성화된 경우
+          setIsAlarmTriggered(false);
+          // 경보음 중지
+          if (alarmSoundRef.current) {
+            alarmSoundRef.current.pause();
+            alarmSoundRef.current.currentTime = 0;
+          }
+          
+          // 맵 경보 메시지 제거
+          removeMapAlertMessage();
+        }
       } else if (isAlarmTriggered) {
-        // 경보 거리 내에 객체가 없는데 경보가 활성화된 경우
         setIsAlarmTriggered(false);
         // 경보음 중지
         if (alarmSoundRef.current) {
@@ -877,16 +859,9 @@ const MapRadarOverlay = ({ language }) => {
         // 맵 경보 메시지 제거
         removeMapAlertMessage();
       }
-    } else if (isAlarmTriggered) {
-      setIsAlarmTriggered(false);
-      // 경보음 중지
-      if (alarmSoundRef.current) {
-        alarmSoundRef.current.pause();
-        alarmSoundRef.current.currentTime = 0;
-      }
-      
-      // 맵 경보 메시지 제거
-      removeMapAlertMessage();
+    } catch (error) {
+      console.error('레이더 데이터 업데이트 오류:', error);
+      isUpdatingRef.current = false;
     }
   }, [radarData, isAlarmEnabled, alarmDistance, alarmPausedUntil]);
   
@@ -989,8 +964,8 @@ const MapRadarOverlay = ({ language }) => {
     const bufferCtx = bufferCanvas.getContext('2d', { alpha: true, desynchronized: false });
     
     // 캔버스 크기 설정 - 고해상도로 설정
-    bufferCanvas.width = 3000;  // 해상도 3배 증가
-    bufferCanvas.height = 3000; // 해상도 3배 증가
+    bufferCanvas.width = 2000;  // 해상도 수정 (3000 -> 2000)
+    bufferCanvas.height = 2000; // 해상도 수정 (3000 -> 2000)
     
     // 선 선명도 개선을 위한 설정
     bufferCtx.imageSmoothingEnabled = false;

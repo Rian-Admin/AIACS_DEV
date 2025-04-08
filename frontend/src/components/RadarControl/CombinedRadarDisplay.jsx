@@ -471,9 +471,16 @@ const CombinedRadarDisplay = ({
             ctx.arc(canvasX, canvasY, size, 0, 2 * Math.PI);
             ctx.fill();
           } else {
-            // 트랙도 원으로 표시 (다이아몬드 대신)
-            ctx.arc(canvasX, canvasY, size, 0, 2 * Math.PI);
+            // 트랙은 다이아몬드 모양으로 표시 (MapRadarOverlay와 일관성 유지)
+            ctx.moveTo(canvasX, canvasY - size); // 위
+            ctx.lineTo(canvasX + size, canvasY); // 오른쪽
+            ctx.lineTo(canvasX, canvasY + size); // 아래
+            ctx.lineTo(canvasX - size, canvasY); // 왼쪽
+            ctx.closePath();
             ctx.fill();
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; // 테두리 추가
+            ctx.stroke();
             
             // 트랙인 경우 삭제 버튼 추가
             if (onDeleteTrack) {
@@ -736,14 +743,18 @@ const CombinedRadarDisplay = ({
           legendCtx.closePath();
           legendCtx.fill();
         } else if (!item.isTrace && !item.isPlot && !item.isArrow) {
-          // 트랙 범례 - 다이아몬드
+          // 트랙 범례 - 다이아몬드 모양으로 변경
           legendCtx.beginPath();
-          legendCtx.moveTo(x, y - 5);
-          legendCtx.lineTo(x + 5, y);
-          legendCtx.lineTo(x, y + 5);
-          legendCtx.lineTo(x - 5, y);
+          legendCtx.moveTo(x, y - 5); // 위
+          legendCtx.lineTo(x + 5, y); // 오른쪽
+          legendCtx.lineTo(x, y + 5); // 아래
+          legendCtx.lineTo(x - 5, y); // 왼쪽
           legendCtx.closePath();
           legendCtx.fill();
+          // 테두리 추가
+          legendCtx.lineWidth = 1;
+          legendCtx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+          legendCtx.stroke();
         }
         
         legendCtx.fillStyle = 'white';
