@@ -1,0 +1,432 @@
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.db.models import Count, F
+import json
+import datetime
+import logging
+from ..frame.camera_manager import CameraManager
+from ..db import db_adapter
+from ..models import Camera, DetectionInfo
+from datetime import datetime
+from ..yolo.detector import ObjectDetector
+from ..hardware.bird_controller import BirdController
+from ..hardware.ptz_manager import PTZManager
+
+# 로그 비활성화
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
+logger.propagate = False
+
+def standardize_response(data, date_fields=None):
+    """API 응답 표준화 헬퍼 함수"""
+    if date_fields is None:
+        date_fields = ['detection_time']
+    
+    if isinstance(data, dict):
+        data_dict = dict(data)
+        # 날짜 필드 표준화
+        for field in date_fields:
+            if field in data_dict and data_dict[field]:
+                if isinstance(data_dict[field], datetime):
+                    data_dict[field] = data_dict[field].isoformat()
+                elif isinstance(data_dict[field], str):
+                    if ' ' in data_dict[field]:
+                        data_dict[field] = data_dict[field].replace(' ', 'T')
+        return data_dict
+    elif isinstance(data, list):
+        return [standardize_response(item, date_fields) for item in data]
+    else:
+        return data
+
+@csrf_exempt
+def get_recent_detections(request):
+    """최근 감지 결과"""
+    try:
+        camera_id_param = request.GET.get('camera_id')
+        
+        if camera_id_param is not None and camera_id_param != '':
+            try:
+                camera_id = int(camera_id_param)
+                detections = db_adapter.get_detections(limit=50, camera_id=camera_id)
+            except ValueError:
+                return JsonResponse({
+                    'error': f'Invalid camera_id: {camera_id_param}',
+                    'detections': []
+                }, status=400)
+        else:
+            detections = db_adapter.get_detections(limit=50)
+        
+        # 표준화된 응답 변환
+        processed_detections = standardize_response(detections)
+        
+        return JsonResponse({
+            'detections': processed_detections,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"감지 결과 조회 오류: {e}")
+        return JsonResponse({
+            'error': str(e),
+            'detections': []
+        }, status=500)
+
+@csrf_exempt
+def get_detection_stats(request):
+    """감지 통계"""
+    try:
+        hours_param = request.GET.get('hours', '24')
+        try:
+            hours = int(hours_param)
+        except ValueError:
+            return JsonResponse({
+                'error': f'Invalid hours parameter: {hours_param}',
+                'stats': []
+            }, status=400)
+            
+        stats = db_adapter.get_detection_stats(hours=hours)
+        
+        # 표준화된 응답 변환
+        processed_stats = standardize_response(stats, date_fields=['first_seen', 'last_seen'])
+        
+        return JsonResponse({
+            'stats': processed_stats,
+            'period_hours': hours,
+            'timestamp': datetime.now().isoformat()
+        })
+            
+    except Exception as e:
+        logger.error(f"감지 통계 조회 오류: {e}")
+        return JsonResponse({
+            'error': str(e),
+            'message': 'Failed to get detection statistics'
+        }, status=500)
+
+@csrf_exempt
+def get_db_status(request):
+    """DB 상태"""
+    try:
+        adapter_status = db_adapter.get_adapter_status()
+        return JsonResponse({
+            'status': 'success',
+            'db_adapter': adapter_status,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"DB 상태 조회 오류: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+def get_cameras(request):
+    """카메라 정보"""
+    try:
+        cameras = Camera.objects.all()
+        camera_list = []
+        
+        for camera in cameras:
+            camera_data = {
+                'camera_id': camera.camera_id,
+                'wind_turbine_id': camera.wind_turbine_id,
+                'viewing_angle': camera.viewing_angle,
+                'installation_direction': camera.installation_direction,
+                'installation_height': camera.installation_height,
+                'rtsp_address': camera.rtsp_address,
+                'status': camera.status
+            }
+            camera_list.append(camera_data)
+        
+        return JsonResponse({'cameras': camera_list})
+    except Exception as e:
+        logger.error(f"카메라 정보 조회 오류: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e),
+            'cameras': []
+        }, status=500)
+
+@csrf_exempt
+def get_radar_data(request):
+    """레이더 데이터 API (404 오류 방지용)"""
+    return JsonResponse({
+        'status': 'success',
+        'message': '레이더 데이터 API 준비 중',
+        'timestamp': datetime.now().isoformat(),
+        'data': []
+    })
+
+@csrf_exempt
+def set_yolo_conf(request):
+    """YOLO 모델의 confidence threshold 설정"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST 요청만 허용됩니다'}, status=405)
+        
+    try:
+        # 요청에서 conf 값 파싱
+        data = json.loads(request.body)
+        conf = data.get('conf')
+        
+        if conf is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'conf 값이 필요합니다'
+            }, status=400)
+            
+        # 값 유효성 검증
+        try:
+            conf = float(conf)
+            if not (0.0 <= conf <= 1.0):
+                return JsonResponse({
+                    'status': 'error', 
+                    'message': 'conf 값은 0.0~1.0 사이의 값이어야 합니다'
+                }, status=400)
+        except ValueError:
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'conf 값은 숫자여야 합니다'
+            }, status=400)
+            
+        # YOLO 모델 가져오기
+        detector = ObjectDetector.get_instance()
+        if detector is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'YOLO 모델을 초기화할 수 없습니다'
+            }, status=500)
+            
+        # conf 값 설정
+        old_conf = detector.get_conf_threshold()
+        result = detector.set_conf_threshold(conf)
+        
+        if result:
+            logger.info(f"YOLO confidence threshold 변경됨: {old_conf} -> {conf}")
+            return JsonResponse({
+                'status': 'success',
+                'old_conf': old_conf,
+                'new_conf': conf
+            })
+        else:
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'conf 값 설정 실패'
+            }, status=500)
+            
+    except Exception as e:
+        logger.error(f"YOLO 설정 변경 오류: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+        
+@csrf_exempt
+def get_yolo_info(request):
+    """YOLO 모델 정보 조회"""
+    try:
+        detector = ObjectDetector.get_instance()
+        if detector is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'YOLO 모델을 초기화할 수 없습니다'
+            }, status=500)
+            
+        model_info = detector.get_model_info()
+        
+        return JsonResponse({
+            'status': 'success',
+            'model_info': model_info
+        })
+        
+    except Exception as e:
+        logger.error(f"YOLO 정보 조회 오류: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+@csrf_exempt
+def enable_controller(request):
+    """조류퇴치기 활성화 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': '잘못된 요청 방식'}, status=405)
+    
+    try:
+        controller = BirdController.get_instance()
+        controller.enable_controller()
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': '조류퇴치기가 활성화되었습니다'
+        })
+    except Exception as e:
+        logger.error(f"조류퇴치기 활성화 오류: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'오류: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def disable_controller(request):
+    """조류퇴치기 비활성화 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': '잘못된 요청 방식'}, status=405)
+    
+    try:
+        controller = BirdController.get_instance()
+        controller.disable_controller()
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': '조류퇴치기가 비활성화되었습니다'
+        })
+    except Exception as e:
+        logger.error(f"조류퇴치기 비활성화 오류: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'오류: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def control_ptz(request):
+    """PTZ 카메라 제어 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST 요청만 허용됩니다'}, status=405)
+        
+    try:
+        # 요청 데이터 파싱
+        data = json.loads(request.body)
+        camera_id = data.get('camera_id')
+        direction = data.get('direction')
+        is_continuous = data.get('is_continuous', True)
+        speed = data.get('speed', 0.7)
+        
+        # 필수 파라미터 검증
+        if camera_id is None:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'camera_id가 필요합니다'
+            }, status=400)
+            
+        if direction is None:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'direction이 필요합니다'
+            }, status=400)
+            
+        # direction 값 검증
+        valid_directions = ["LEFT", "RIGHT", "UP", "DOWN", "ZOOM_IN", "ZOOM_OUT"]
+        if direction not in valid_directions:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'유효하지 않은 direction 값입니다. 유효한 값: {", ".join(valid_directions)}'
+            }, status=400)
+            
+        # 카메라 정보 가져오기
+        try:
+            camera = Camera.objects.get(camera_id=camera_id)
+        except Camera.DoesNotExist:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'카메라 ID {camera_id}를 찾을 수 없습니다'
+            }, status=404)
+            
+        # 카메라 RTSP URL 확인
+        if not camera.rtsp_address:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'카메라 ID {camera_id}의 RTSP 주소가 설정되지 않았습니다'
+            }, status=400)
+            
+        # PTZ 매니저 인스턴스 가져오기
+        ptz_manager = PTZManager.get_instance()
+        
+        # PTZ 세션 설정 (없는 경우 초기화)
+        # 카메라 모델에 ONVIF 정보 필드가 없는 경우 기본값 사용
+        if hasattr(camera, 'onvif_username') and camera.onvif_username:
+            username = camera.onvif_username
+        else:
+            username = 'admin'
+            
+        if hasattr(camera, 'onvif_password') and camera.onvif_password:
+            password = camera.onvif_password
+        else:
+            password = 'admin123'
+            
+        if hasattr(camera, 'onvif_port') and camera.onvif_port:
+            port = camera.onvif_port
+        else:
+            port = 80
+            
+        # PTZ 세션 설정이 되어 있지 않으면 설정 시도
+        if not ptz_manager.setup_onvif_ptz(camera_id, camera.rtsp_address, username, password, port):
+            return JsonResponse({
+                'status': 'error',
+                'message': f'카메라 ID {camera_id}의 PTZ 설정에 실패했습니다'
+            }, status=500)
+            
+        # PTZ 제어 실행
+        result = ptz_manager.control_ptz(camera_id, direction, is_continuous, speed)
+        
+        if result:
+            action = "이동 시작" if is_continuous else "정지"
+            return JsonResponse({
+                'status': 'success',
+                'message': f'카메라 {camera_id} PTZ {direction} {action} 명령이 성공적으로 전송되었습니다',
+                'is_moving': ptz_manager.is_ptz_moving(camera_id)
+            })
+        else:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'카메라 {camera_id} PTZ 제어 명령 전송에 실패했습니다'
+            }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'status': 'error',
+            'message': '잘못된 JSON 형식입니다'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"PTZ 제어 오류: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'PTZ 제어 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def get_ptz_position(request, camera_id):
+    """PTZ 카메라 현재 위치 정보 가져오기 API"""
+    try:
+        # 카메라 정보 가져오기
+        try:
+            camera = Camera.objects.get(camera_id=camera_id)
+        except Camera.DoesNotExist:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'카메라 ID {camera_id}를 찾을 수 없습니다'
+            }, status=404)
+            
+        # PTZ 매니저 인스턴스 가져오기
+        ptz_manager = PTZManager.get_instance()
+        
+        # 위치 정보 가져오기
+        position = ptz_manager.get_camera_position(camera_id)
+        
+        if position is not None:
+            return JsonResponse({
+                'status': 'success',
+                'camera_id': camera_id,
+                'position': position,
+                'is_moving': ptz_manager.is_ptz_moving(camera_id)
+            })
+        else:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'카메라 {camera_id}의 위치 정보를 가져올 수 없습니다'
+            }, status=500)
+            
+    except Exception as e:
+        logger.error(f"PTZ 위치 정보 가져오기 오류: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'PTZ 위치 정보 가져오기 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)

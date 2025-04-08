@@ -1,0 +1,1191 @@
+{% extends "detection/base_layout.html" %}
+{% load static %}
+
+{% block title %}데이터베이스 기록 - 조류충돌방지시스템{% endblock %}
+
+{% block subtitle %}데이터베이스 기록 페이지{% endblock %}
+
+{% block styles %}
+<style>
+    /* 데이터베이스 페이지 특화 스타일 */
+    .table-container {
+        background-color: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        overflow-x: auto;
+    }
+    
+    .table thead {
+        background-color: #f0f0f0;
+    }
+    
+    .pagination .page-item.active .page-link {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+        color: #ffffff;
+    }
+    
+    .pagination .page-link {
+        color: #0d6efd;
+    }
+    
+    .filter-container {
+        background-color: white;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .dashboard-card {
+        background-color: white;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        transition: all 0.3s ease;
+    }
+    
+    .dashboard-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+    
+    .card-title {
+        font-size: 1.1rem;
+        font-weight: bold;
+        color: #0d6efd;
+    }
+    
+    .card-value {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    
+    .status-badge {
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        display: inline-block;
+        font-size: 0.875rem;
+    }
+    
+    .status-badge-active, .status-badge-success {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .status-badge-inactive, .status-badge-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .status-badge-warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    
+    .tab-content {
+        padding-top: 20px;
+    }
+    
+    .loading-spinner {
+        text-align: center;
+        padding: 20px;
+        display: none;
+    }
+    
+    .loading-spinner:after {
+        content: '';
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 3px solid #ccc;
+        border-top-color: #0d6efd;
+        animation: spin 1s infinite linear;
+        margin-left: 10px;
+        vertical-align: middle;
+    }
+    
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    
+    .bb-info-container table {
+        font-size: 0.9rem;
+    }
+    
+    .toggle-bb-info {
+        cursor: pointer;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+    }
+    
+    .toggle-bb-info:hover {
+        background-color: #0d6efd;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container container-main">
+    <h1 class="mb-4">데이터베이스 기록</h1>
+    
+    <!-- DB 대시보드 -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="dashboard-card">
+                <div class="card-title">총 감지 기록</div>
+                <div class="card-value" id="totalDetections">{{ total_detections }}</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="dashboard-card">
+                <div class="card-title">오늘의 감지 기록</div>
+                <div class="card-value" id="todayDetections">{{ today_detections }}</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="dashboard-card">
+                <div class="card-title">총 카메라 수</div>
+                <div class="card-value" id="totalCameras">{{ cameras_count }}</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="dashboard-card">
+                <div class="card-title">DB 상태</div>
+                <div class="d-flex align-items-center">
+                    <div class="card-value" id="dbStatus">
+                        <span class="status-badge status-badge-{{ db_status_color }}">{{ db_status }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 일관된 탭 내비게이션 -->
+    <div class="container">
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a class="nav-link" href="/" target="_top">메인 대시보드</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/camera-management/" target="_top">카메라 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link active" href="/db-management/" target="_top">데이터베이스 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/model-management/" target="_top">모델 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/speaker-management/" target="_top">스피커 관리</a>
+            </li>
+        </ul>
+    </div>
+
+    <!-- 테이블 선택 탭 -->
+    <ul class="nav nav-tabs" id="dbTables" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="detections-tab" data-bs-toggle="tab" data-bs-target="#detections" type="button" role="tab" aria-controls="detections" aria-selected="true">감지 기록</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="bird-analysis-tab" data-bs-toggle="tab" data-bs-target="#bird-analysis" type="button" role="tab" aria-controls="bird-analysis" aria-selected="false">조류 분석</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="cameras-tab" data-bs-toggle="tab" data-bs-target="#cameras" type="button" role="tab" aria-controls="cameras" aria-selected="false">카메라</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="birds-tab" data-bs-toggle="tab" data-bs-target="#birds" type="button" role="tab" aria-controls="birds" aria-selected="false">조류 클래스</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="deterrents-tab" data-bs-toggle="tab" data-bs-target="#deterrents" type="button" role="tab" aria-controls="deterrents" aria-selected="false">퇴치 기록</button>
+        </li>
+    </ul>
+
+    <!-- 탭 내용 -->
+    <div class="tab-content" id="dbTablesContent">
+        <!-- 감지 기록 탭 -->
+        <div class="tab-pane fade show active" id="detections" role="tabpanel" aria-labelledby="detections-tab">
+            <div class="filter-container mb-3">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <label for="detectionDateFrom" class="form-label">시작일</label>
+                        <input type="date" class="form-control" id="detectionDateFrom">
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label for="detectionDateTo" class="form-label">종료일</label>
+                        <input type="date" class="form-control" id="detectionDateTo">
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label for="detectionCamera" class="form-label">카메라</label>
+                        <select class="form-select" id="detectionCamera">
+                            <option value="">모든 카메라</option>
+                            {% for camera in cameras %}
+                            <option value="{{ camera.camera_id }}">{{ camera.camera_id }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button id="filterDetections" class="btn btn-primary w-100">필터링</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>ID</th>
+                            <th>감지 시간</th>
+                            <th>바운딩 박스 수</th>
+                            <th>카메라 ID</th>
+                        </tr>
+                    </thead>
+                    <tbody id="filteredDetectionsTableBody">
+                        {% for detection in detections %}
+                        <tr data-detection-id="{{ detection.detection_id }}" class="detection-row">
+                            <td><button type="button" class="btn btn-sm btn-outline-primary toggle-bb-info" onclick="toggleBBInfo(this, '{{ detection.detection_id }}')"><i class="fas fa-plus"></i></button></td>
+                            <td>{{ detection.detection_id }}</td>
+                            <td>{{ detection.detection_time|date:'Y년 m월 d일 H:i:s' }}</td>
+                            <td>{{ detection.bb_count }}</td>
+                            <td>{{ detection.camera_id.camera_id }}</td>
+                        </tr>
+                        <tr class="bb-info-row" style="display: none;">
+                            <td colspan="5">
+                                <div class="loading-spinner">바운딩 박스 로딩 중...</div>
+                                <div class="bb-info-container"></div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                
+                <!-- 페이지네이션 -->
+                <nav aria-label="Page navigation">
+                    <ul class="pagination justify-content-center" id="detectionsPagination">
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#" tabindex="-1">이전</a>
+                        </li>
+                        <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                        <li class="page-item"><a class="page-link" href="#">2</a></li>
+                        <li class="page-item"><a class="page-link" href="#">3</a></li>
+                        <li class="page-item">
+                            <a class="page-link" href="#">다음</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+
+        <!-- 조류 분석 탭 -->
+        <div class="tab-pane fade" id="bird-analysis" role="tabpanel" aria-labelledby="bird-analysis-tab">
+            <div class="filter-container mb-3">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <label for="birdAnalysisDateFrom" class="form-label">시작일</label>
+                        <input type="date" class="form-control" id="birdAnalysisDateFrom">
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label for="birdAnalysisDateTo" class="form-label">종료일</label>
+                        <input type="date" class="form-control" id="birdAnalysisDateTo">
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label for="birdAnalysisBirdClass" class="form-label">조류 종류</label>
+                        <select class="form-select" id="birdAnalysisBirdClass">
+                            <option value="">모든 조류</option>
+                            {% for bird in birds %}
+                            <option value="{{ bird.class_id }}">{{ bird.bird_name_ko }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button id="filterBirdAnalysis" class="btn btn-primary w-100">필터링</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="dashboard-card">
+                        <div class="card-title">평균 바운딩 박스 크기</div>
+                        <div class="card-value" id="avgBoundingBoxSize">-</div>
+                        <small>이미지 크기 대비 비율 (%)</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="dashboard-card">
+                        <div class="card-title">최대 바운딩 박스 크기</div>
+                        <div class="card-value" id="maxBoundingBoxSize">-</div>
+                        <small>이미지 크기 대비 비율 (%)</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="dashboard-card">
+                        <div class="card-title">분석 데이터 수</div>
+                        <div class="card-value" id="birdAnalysisCount">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 조류 분석 보기 모드 선택 -->
+            <ul class="nav nav-pills mb-3" id="birdAnalysisViewMode" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="statistics-tab" data-bs-toggle="pill" data-bs-target="#statistics-view" type="button" role="tab" aria-controls="statistics-view" aria-selected="true">통계 보기</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="detailed-tab" data-bs-toggle="pill" data-bs-target="#detailed-view" type="button" role="tab" aria-controls="detailed-view" aria-selected="false">상세 데이터 보기</button>
+                </li>
+            </ul>
+
+            <!-- 조류 분석 보기 내용 -->
+            <div class="tab-content" id="birdAnalysisViewContent">
+                <!-- 통계 보기 -->
+                <div class="tab-pane fade show active" id="statistics-view" role="tabpanel" aria-labelledby="statistics-tab">
+                    <div class="table-container">
+                        <h4 class="mb-3">조류별 바운딩 박스 크기 분석</h4>
+                        <table class="table table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>조류 종류</th>
+                                    <th>데이터 수</th>
+                                    <th>평균 가로 크기</th>
+                                    <th>평균 세로 크기</th>
+                                    <th>평균 면적</th>
+                                    <th>최대 면적</th>
+                                    <th>최소 면적</th>
+                                </tr>
+                            </thead>
+                            <tbody id="birdAnalysisTableBody">
+                                <tr>
+                                    <td colspan="7" class="text-center">데이터를 불러오는 중입니다...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 상세 데이터 보기 -->
+                <div class="tab-pane fade" id="detailed-view" role="tabpanel" aria-labelledby="detailed-tab">
+                    <div class="table-container">
+                        <h4 class="mb-3">바운딩 박스 상세 데이터</h4>
+                        <table class="table table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>조류 종류</th>
+                                    <th>감지 시간</th>
+                                    <th>카메라 ID</th>
+                                    <th>왼쪽(%)</th>
+                                    <th>위(%)</th>
+                                    <th>오른쪽(%)</th>
+                                    <th>아래(%)</th>
+                                    <th>너비(%)</th>
+                                    <th>높이(%)</th>
+                                    <th>면적(%²)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detailedBirdDataBody">
+                                <tr>
+                                    <td colspan="11" class="text-center">데이터를 불러오는 중입니다...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <!-- 페이지네이션 -->
+                        <nav aria-label="Page navigation">
+                            <ul class="pagination justify-content-center" id="detailedDataPagination">
+                                <li class="page-item disabled">
+                                    <a class="page-link" href="#" tabindex="-1">이전</a>
+                                </li>
+                                <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                                <li class="page-item disabled">
+                                    <a class="page-link" href="#">다음</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 카메라 탭 -->
+        <div class="tab-pane fade" id="cameras" role="tabpanel" aria-labelledby="cameras-tab">
+            <div class="table-container">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>카메라 ID</th>
+                            <th>풍력 터빈 ID</th>
+                            <th>시야각</th>
+                            <th>설치 방향</th>
+                            <th>설치 높이</th>
+                            <th>RTSP 주소</th>
+                            <th>상태</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for camera in cameras %}
+                        <tr>
+                            <td>{{ camera.camera_id }}</td>
+                            <td>{{ camera.wind_turbine_id }}</td>
+                            <td>{{ camera.viewing_angle }}°</td>
+                            <td>{{ camera.installation_direction }}</td>
+                            <td>{{ camera.installation_height }}m</td>
+                            <td>{{ camera.rtsp_address }}</td>
+                            <td>
+                                <span class="status-badge status-badge-{{ camera.status|lower }}">
+                                    {{ camera.status }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 조류 클래스 탭 -->
+        <div class="tab-pane fade" id="birds" role="tabpanel" aria-labelledby="birds-tab">
+            <div class="table-container">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>조류 코드</th>
+                            <th>한글명</th>
+                            <th>학명</th>
+                            <th>보호 상태</th>
+                            <th>텃새/철새</th>
+                            <th>위험도</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for bird in birds %}
+                        <tr>
+                            <td>{{ bird.class_id }}</td>
+                            <td>{{ bird.bird_type_code }}</td>
+                            <td>{{ bird.bird_name_ko }}</td>
+                            <td>{{ bird.scientific_name }}</td>
+                            <td>{{ bird.protection_status_code.description }}</td>
+                            <td>{{ bird.migration_code.description }}</td>
+                            <td>{{ bird.risk_score }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 퇴치 기록 탭 -->
+        <div class="tab-pane fade" id="deterrents" role="tabpanel" aria-labelledby="deterrents-tab">
+            <div class="table-container">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>감지 ID</th>
+                            <th>거리</th>
+                            <th>개체수</th>
+                            <th>퇴치 시작 시간</th>
+                            <th>퇴치 종료 시간</th>
+                            <th>대포 ID</th>
+                            <th>발사 시간</th>
+                            <th>성공 여부</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for deterrent in deterrents %}
+                        <tr>
+                            <td>{{ deterrent.deterrent_id }}</td>
+                            <td>{{ deterrent.detection_id.detection_id }}</td>
+                            <td>{{ deterrent.detection_distance }}m</td>
+                            <td>{{ deterrent.object_count }}</td>
+                            <td>{{ deterrent.deterrent_start_time }}</td>
+                            <td>{{ deterrent.deterrent_end_time }}</td>
+                            <td>{{ deterrent.cannon_id.cannon_id }}</td>
+                            <td>{{ deterrent.cannon_firing_time }}</td>
+                            <td>
+                                {% if deterrent.is_success %}
+                                <span class="status-badge status-badge-success">성공</span>
+                                {% else %}
+                                <span class="status-badge status-badge-danger">실패</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 탭 링크에 이벤트 리스너 추가
+        document.querySelectorAll('.nav-link').forEach(link => {
+            if (link.getAttribute('href')) { // href 속성이 있는 링크만 처리
+                link.addEventListener('click', function(e) {
+                    // 활성 링크는 무시
+                    if (this.classList.contains('active')) {
+                        return;
+                    }
+                    
+                    // 즉시 페이지 이동
+                    window.location.href = this.getAttribute('href');
+                });
+            }
+        });
+        
+        // 감지 기록 필터링
+        document.getElementById('filterDetections').addEventListener('click', function() {
+            const dateFrom = document.getElementById('detectionDateFrom').value;
+            const dateTo = document.getElementById('detectionDateTo').value;
+            const cameraId = document.getElementById('detectionCamera').value;
+            
+            let url = `/api/detections-filtered/?`;
+            if (dateFrom) url += `date_from=${dateFrom}&`;
+            if (dateTo) url += `date_to=${dateTo}&`;
+            if (cameraId) url += `camera_id=${cameraId}&`;
+            url += `per_page=100`;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    const tableBody = document.getElementById('filteredDetectionsTableBody');
+                    tableBody.innerHTML = '';
+                    
+                    if (data.detections && data.detections.length > 0) {
+                        data.detections.forEach(detection => {
+                            // 메인 행 추가
+                            const row = document.createElement('tr');
+                            row.setAttribute('data-detection-id', detection.detection_id);
+                            row.className = 'detection-row';
+                            const detectionTime = new Date(detection.detection_time);
+                            const timestamp = Math.floor(detectionTime.getTime() / 1000);
+                            
+                            // 포맷된 날짜/시간 문자열 생성
+                            const formattedDate = detectionTime.toLocaleDateString('ko-KR', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                            });
+                            
+                            const formattedTime = detectionTime.toLocaleTimeString('ko-KR', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                                hour12: false
+                            });
+                            
+                            const formattedDateTime = `${formattedDate} ${formattedTime}`;
+                            
+                            row.innerHTML = `
+                                <td><button type="button" class="btn btn-sm btn-outline-primary toggle-bb-info" onclick="toggleBBInfo(this, '${detection.detection_id}')"><i class="fas fa-plus"></i></button></td>
+                                <td>${detection.detection_id}</td>
+                                <td>${formattedDateTime}</td>
+                                <td>${detection.bb_count}</td>
+                                <td>${detection.camera_id}</td>
+                            `;
+                            tableBody.appendChild(row);
+                            
+                            // BB 정보 행 추가
+                            const bbRow = document.createElement('tr');
+                            bbRow.className = 'bb-info-row';
+                            bbRow.style.display = 'none';
+                            bbRow.innerHTML = `
+                                <td colspan="5">
+                                    <div class="loading-spinner">바운딩 박스 로딩 중...</div>
+                                    <div class="bb-info-container"></div>
+                                </td>
+                            `;
+                            tableBody.appendChild(bbRow);
+                        });
+                        
+                        // 새로 생성된 버튼에 이벤트 리스너 추가
+                        setupBBInfoToggleButtons();
+                    } else {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `<td colspan="5" class="text-center">검색 결과가 없습니다.</td>`;
+                        tableBody.appendChild(row);
+                    }
+                    
+                    // 페이지네이션 업데이트 (간단한 예시)
+                    updatePagination(data.total_pages, data.current_page);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('데이터 필터링 중 오류가 발생했습니다.');
+                });
+        });
+        
+        // 페이지네이션 업데이트 함수
+        function updatePagination(totalPages, currentPage) {
+            const pagination = document.getElementById('detectionsPagination');
+            pagination.innerHTML = '';
+            
+            // 처음 페이지 버튼
+            const firstItem = document.createElement('li');
+            firstItem.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+            firstItem.innerHTML = `<a class="page-link" href="#" data-page="1"><i class="fas fa-angle-double-left"></i></a>`;
+            pagination.appendChild(firstItem);
+            
+            // 이전 버튼
+            const prevItem = document.createElement('li');
+            prevItem.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+            prevItem.innerHTML = `<a class="page-link" href="#" data-page="${currentPage - 1}">이전</a>`;
+            pagination.appendChild(prevItem);
+            
+            // 페이지 번호
+            const maxPages = 5; // 표시할 최대 페이지 수
+            const startPage = Math.max(1, currentPage - Math.floor(maxPages / 2));
+            const endPage = Math.min(totalPages, startPage + maxPages - 1);
+            
+            for (let i = startPage; i <= endPage; i++) {
+                const pageItem = document.createElement('li');
+                pageItem.className = `page-item ${i === currentPage ? 'active' : ''}`;
+                pageItem.innerHTML = `<a class="page-link" href="#" data-page="${i}">${i}</a>`;
+                pagination.appendChild(pageItem);
+            }
+            
+            // 다음 버튼
+            const nextItem = document.createElement('li');
+            nextItem.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+            nextItem.innerHTML = `<a class="page-link" href="#" data-page="${currentPage + 1}">다음</a>`;
+            pagination.appendChild(nextItem);
+            
+            // 마지막 페이지 버튼
+            const lastItem = document.createElement('li');
+            lastItem.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+            lastItem.innerHTML = `<a class="page-link" href="#" data-page="${totalPages}"><i class="fas fa-angle-double-right"></i></a>`;
+            pagination.appendChild(lastItem);
+            
+            // 페이지 클릭 이벤트
+            pagination.querySelectorAll('.page-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const page = parseInt(this.getAttribute('data-page'));
+                    if (page < 1 || page > totalPages || page === currentPage) return;
+                    
+                    // 같은 필터와 함께 새 페이지 로드
+                    const dateFrom = document.getElementById('detectionDateFrom').value;
+                    const dateTo = document.getElementById('detectionDateTo').value;
+                    const cameraId = document.getElementById('detectionCamera').value;
+                    
+                    let url = `/api/detections-filtered/?page=${page}&per_page=100&`;
+                    if (dateFrom) url += `date_from=${dateFrom}&`;
+                    if (dateTo) url += `date_to=${dateTo}&`;
+                    if (cameraId) url += `camera_id=${cameraId}&`;
+                    
+                    fetch(url)
+                        .then(response => response.json())
+                        .then(data => {
+                            // 테이블 업데이트
+                            const tableBody = document.getElementById('filteredDetectionsTableBody');
+                            tableBody.innerHTML = '';
+                            
+                            if (data.detections && data.detections.length > 0) {
+                                data.detections.forEach(detection => {
+                                    // 메인 행 추가
+                                    const row = document.createElement('tr');
+                                    row.setAttribute('data-detection-id', detection.detection_id);
+                                    row.className = 'detection-row';
+                                    const detectionTime = new Date(detection.detection_time);
+                                    const timestamp = Math.floor(detectionTime.getTime() / 1000);
+                                    
+                                    // 포맷된 날짜/시간 문자열 생성
+                                    const formattedDate = detectionTime.toLocaleDateString('ko-KR', {
+                                        year: 'numeric',
+                                        month: 'long',
+                                        day: 'numeric'
+                                    });
+                                    
+                                    const formattedTime = detectionTime.toLocaleTimeString('ko-KR', {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        second: '2-digit',
+                                        hour12: false
+                                    });
+                                    
+                                    const formattedDateTime = `${formattedDate} ${formattedTime}`;
+                                    
+                                    row.innerHTML = `
+                                        <td><button type="button" class="btn btn-sm btn-outline-primary toggle-bb-info" onclick="toggleBBInfo(this, '${detection.detection_id}')"><i class="fas fa-plus"></i></button></td>
+                                        <td>${detection.detection_id}</td>
+                                        <td>${formattedDateTime}</td>
+                                        <td>${detection.bb_count}</td>
+                                        <td>${detection.camera_id}</td>
+                                    `;
+                                    tableBody.appendChild(row);
+                                    
+                                    // BB 정보 행 추가
+                                    const bbRow = document.createElement('tr');
+                                    bbRow.className = 'bb-info-row';
+                                    bbRow.style.display = 'none';
+                                    bbRow.innerHTML = `
+                                        <td colspan="5">
+                                            <div class="loading-spinner">바운딩 박스 로딩 중...</div>
+                                            <div class="bb-info-container"></div>
+                                        </td>
+                                    `;
+                                    tableBody.appendChild(bbRow);
+                                });
+                                
+                                // 새로 생성된 버튼에 이벤트 리스너 추가
+                                setupBBInfoToggleButtons();
+                            } else {
+                                const row = document.createElement('tr');
+                                row.innerHTML = `<td colspan="5" class="text-center">검색 결과가 없습니다.</td>`;
+                                tableBody.appendChild(row);
+                            }
+                            
+                            // 페이지네이션 업데이트
+                            updatePagination(data.total_pages, data.current_page);
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            alert('데이터 로드 중 오류가 발생했습니다.');
+                        });
+                });
+            });
+        }
+        
+        // 현재 날짜 설정 (조류 분석 탭)
+        const birdAnalysisToday = new Date();
+        const birdAnalysisLastMonth = new Date();
+        birdAnalysisLastMonth.setMonth(birdAnalysisToday.getMonth() - 1);
+        
+        document.getElementById('birdAnalysisDateTo').valueAsDate = birdAnalysisToday;
+        document.getElementById('birdAnalysisDateFrom').valueAsDate = birdAnalysisLastMonth;
+        
+        // 조류 분석 필터링
+        document.getElementById('filterBirdAnalysis').addEventListener('click', function() {
+            const dateFrom = document.getElementById('birdAnalysisDateFrom').value;
+            const dateTo = document.getElementById('birdAnalysisDateTo').value;
+            const birdClass = document.getElementById('birdAnalysisBirdClass').value;
+            
+            let url = `/api/bird-analysis/?`;
+            if (dateFrom) url += `date_from=${dateFrom}&`;
+            if (dateTo) url += `date_to=${dateTo}&`;
+            if (birdClass) url += `bird_class=${birdClass}&`;
+            
+            // 로딩 표시
+            document.getElementById('birdAnalysisTableBody').innerHTML = '<tr><td colspan="7" class="text-center">데이터를 불러오는 중입니다...</td></tr>';
+            document.getElementById('detailedBirdDataBody').innerHTML = '<tr><td colspan="11" class="text-center">데이터를 불러오는 중입니다...</td></tr>';
+            document.getElementById('avgBoundingBoxSize').textContent = '-';
+            document.getElementById('maxBoundingBoxSize').textContent = '-';
+            document.getElementById('birdAnalysisCount').textContent = '-';
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.bb_data && data.bb_data.length > 0) {
+                        // 바운딩 박스 크기 계산
+                        let totalWidth = 0;
+                        let totalHeight = 0;
+                        let maxWidth = 0;
+                        let maxHeight = 0;
+                        let birdCounts = {};
+                        let birdSizes = {};
+                        
+                        // 데이터 처리 및 테이블 업데이트
+                        data.bb_data.forEach(bb => {
+                            const width = bb.bb_right - bb.bb_left;
+                            const height = bb.bb_bottom - bb.bb_top;
+                            const area = width * height;
+                            
+                            // 총계 업데이트
+                            totalWidth += width;
+                            totalHeight += height;
+                            maxWidth = Math.max(maxWidth, width);
+                            maxHeight = Math.max(maxHeight, height);
+                            
+                            // 조류별 통계 업데이트
+                            if (!birdCounts[bb.class_name]) {
+                                birdCounts[bb.class_name] = 0;
+                                birdSizes[bb.class_name] = {
+                                    totalWidth: 0,
+                                    totalHeight: 0,
+                                    totalArea: 0,
+                                    maxArea: 0,
+                                    minArea: Number.MAX_VALUE
+                                };
+                            }
+                            
+                            birdCounts[bb.class_name]++;
+                            birdSizes[bb.class_name].totalWidth += width;
+                            birdSizes[bb.class_name].totalHeight += height;
+                            birdSizes[bb.class_name].totalArea += area;
+                            birdSizes[bb.class_name].maxArea = Math.max(birdSizes[bb.class_name].maxArea, area);
+                            birdSizes[bb.class_name].minArea = Math.min(birdSizes[bb.class_name].minArea, area);
+                        });
+                        
+                        // 조류별 평균 계산 및 테이블 업데이트
+                        const tableBody = document.getElementById('birdAnalysisTableBody');
+                        tableBody.innerHTML = '';
+                        
+                        Object.keys(birdCounts).forEach(birdName => {
+                            const count = birdCounts[birdName];
+                            const avgWidth = birdSizes[birdName].totalWidth / count;
+                            const avgHeight = birdSizes[birdName].totalHeight / count;
+                            const avgArea = birdSizes[birdName].totalArea / count;
+                            const maxArea = birdSizes[birdName].maxArea;
+                            const minArea = birdSizes[birdName].minArea === Number.MAX_VALUE ? 0 : birdSizes[birdName].minArea;
+                            
+                            // 백분율로 변환 (0.14 → 14%)
+                            const avgWidthPercent = (avgWidth * 100).toFixed(1);
+                            const avgHeightPercent = (avgHeight * 100).toFixed(1);
+                            const avgAreaPercent = (avgArea * 10000).toFixed(1);
+                            const maxAreaPercent = (maxArea * 10000).toFixed(1);
+                            const minAreaPercent = (minArea * 10000).toFixed(1);
+                            
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${birdName}</td>
+                                <td>${count}</td>
+                                <td>${avgWidthPercent}%</td>
+                                <td>${avgHeightPercent}%</td>
+                                <td>${avgAreaPercent}%²</td>
+                                <td>${maxAreaPercent}%²</td>
+                                <td>${minAreaPercent}%²</td>
+                            `;
+                            tableBody.appendChild(row);
+                        });
+                        
+                        // 상세 데이터 테이블 업데이트
+                        const detailedBody = document.getElementById('detailedBirdDataBody');
+                        detailedBody.innerHTML = '';
+                        
+                        data.bb_data.forEach(bb => {
+                            // 크기 및 백분율 계산
+                            const width = bb.bb_right - bb.bb_left;
+                            const height = bb.bb_bottom - bb.bb_top;
+                            const area = width * height;
+                            
+                            // 바운딩 박스 위치 백분율 변환
+                            const leftPercent = (bb.bb_left * 100).toFixed(1);
+                            const topPercent = (bb.bb_top * 100).toFixed(1);
+                            const rightPercent = (bb.bb_right * 100).toFixed(1);
+                            const bottomPercent = (bb.bb_bottom * 100).toFixed(1);
+                            
+                            // 바운딩 박스 크기 백분율 변환
+                            const widthPercent = (width * 100).toFixed(1);
+                            const heightPercent = (height * 100).toFixed(1);
+                            const areaPercent = (area * 10000).toFixed(1);
+                            
+                            // 날짜 포맷팅
+                            const detectionTime = new Date(bb.detection_time);
+                            const formattedDate = detectionTime.toLocaleString('ko-KR', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                                hour12: false
+                            });
+                            
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${bb.record_id}</td>
+                                <td>${bb.class_name}</td>
+                                <td>${formattedDate}</td>
+                                <td>${bb.camera_id}</td>
+                                <td>${leftPercent}%</td>
+                                <td>${topPercent}%</td>
+                                <td>${rightPercent}%</td>
+                                <td>${bottomPercent}%</td>
+                                <td>${widthPercent}%</td>
+                                <td>${heightPercent}%</td>
+                                <td>${areaPercent}%²</td>
+                            `;
+                            detailedBody.appendChild(row);
+                        });
+                        
+                        // 요약 통계 업데이트 (백분율로 변환)
+                        const avgWidth = totalWidth / data.bb_data.length;
+                        const avgHeight = totalHeight / data.bb_data.length;
+                        document.getElementById('avgBoundingBoxSize').textContent = 
+                            `${(avgWidth * 100).toFixed(1)}% × ${(avgHeight * 100).toFixed(1)}%`;
+                        document.getElementById('maxBoundingBoxSize').textContent = 
+                            `${(maxWidth * 100).toFixed(1)}% × ${(maxHeight * 100).toFixed(1)}%`;
+                        document.getElementById('birdAnalysisCount').textContent = data.bb_data.length;
+                    } else {
+                        document.getElementById('birdAnalysisTableBody').innerHTML = '<tr><td colspan="7" class="text-center">검색 결과가 없습니다.</td></tr>';
+                        document.getElementById('detailedBirdDataBody').innerHTML = '<tr><td colspan="11" class="text-center">검색 결과가 없습니다.</td></tr>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('birdAnalysisTableBody').innerHTML = 
+                        '<tr><td colspan="7" class="text-center text-danger">데이터 로드 중 오류가 발생했습니다.</td></tr>';
+                    document.getElementById('detailedBirdDataBody').innerHTML = 
+                        '<tr><td colspan="11" class="text-center text-danger">데이터 로드 중 오류가 발생했습니다.</td></tr>';
+                });
+        });
+        
+        // 현재 날짜 설정 (감지 기록 탭)
+        const detectionToday = new Date();
+        const detectionLastMonth = new Date();
+        detectionLastMonth.setMonth(detectionToday.getMonth() - 1);
+        
+        document.getElementById('detectionDateTo').valueAsDate = detectionToday;
+        document.getElementById('detectionDateFrom').valueAsDate = detectionLastMonth;
+        
+        // 페이지 로드 시 초기 데이터 로드
+        // 감지 기록 탭 데이터 로드
+        fetch(`/api/detections-filtered/?per_page=100`)
+            .then(response => response.json())
+            .then(data => {
+                // 페이지네이션 업데이트
+                updatePagination(data.total_pages, data.current_page);
+                
+                // 바운딩 박스 토글 버튼 이벤트 리스너 추가
+                setupBBInfoToggleButtons();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+            
+        // 조류 분석 탭 초기 데이터 로드
+        fetch(`/api/bird-analysis/`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success' && data.bb_data && data.bb_data.length > 0) {
+                    // 바운딩 박스 크기 계산
+                    let totalWidth = 0;
+                    let totalHeight = 0;
+                    let maxWidth = 0;
+                    let maxHeight = 0;
+                    let birdCounts = {};
+                    let birdSizes = {};
+                    
+                    // 데이터 처리 및 테이블 업데이트
+                    data.bb_data.forEach(bb => {
+                        const width = bb.bb_right - bb.bb_left;
+                        const height = bb.bb_bottom - bb.bb_top;
+                        const area = width * height;
+                        
+                        // 총계 업데이트
+                        totalWidth += width;
+                        totalHeight += height;
+                        maxWidth = Math.max(maxWidth, width);
+                        maxHeight = Math.max(maxHeight, height);
+                        
+                        // 조류별 통계 업데이트
+                        if (!birdCounts[bb.class_name]) {
+                            birdCounts[bb.class_name] = 0;
+                            birdSizes[bb.class_name] = {
+                                totalWidth: 0,
+                                totalHeight: 0,
+                                totalArea: 0,
+                                maxArea: 0,
+                                minArea: Number.MAX_VALUE
+                            };
+                        }
+                        
+                        birdCounts[bb.class_name]++;
+                        birdSizes[bb.class_name].totalWidth += width;
+                        birdSizes[bb.class_name].totalHeight += height;
+                        birdSizes[bb.class_name].totalArea += area;
+                        birdSizes[bb.class_name].maxArea = Math.max(birdSizes[bb.class_name].maxArea, area);
+                        birdSizes[bb.class_name].minArea = Math.min(birdSizes[bb.class_name].minArea, area);
+                    });
+                    
+                    // 조류별 평균 계산 및 테이블 업데이트
+                    const tableBody = document.getElementById('birdAnalysisTableBody');
+                    tableBody.innerHTML = '';
+                    
+                    Object.keys(birdCounts).forEach(birdName => {
+                        const count = birdCounts[birdName];
+                        const avgWidth = birdSizes[birdName].totalWidth / count;
+                        const avgHeight = birdSizes[birdName].totalHeight / count;
+                        const avgArea = birdSizes[birdName].totalArea / count;
+                        const maxArea = birdSizes[birdName].maxArea;
+                        const minArea = birdSizes[birdName].minArea === Number.MAX_VALUE ? 0 : birdSizes[birdName].minArea;
+                        
+                        // 백분율로 변환 (0.14 → 14%)
+                        const avgWidthPercent = (avgWidth * 100).toFixed(1);
+                        const avgHeightPercent = (avgHeight * 100).toFixed(1);
+                        const avgAreaPercent = (avgArea * 10000).toFixed(1);
+                        const maxAreaPercent = (maxArea * 10000).toFixed(1);
+                        const minAreaPercent = (minArea * 10000).toFixed(1);
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${birdName}</td>
+                            <td>${count}</td>
+                            <td>${avgWidthPercent}%</td>
+                            <td>${avgHeightPercent}%</td>
+                            <td>${avgAreaPercent}%²</td>
+                            <td>${maxAreaPercent}%²</td>
+                            <td>${minAreaPercent}%²</td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                    
+                    // 상세 데이터 테이블 업데이트
+                    const detailedBody = document.getElementById('detailedBirdDataBody');
+                    detailedBody.innerHTML = '';
+                    
+                    data.bb_data.forEach(bb => {
+                        // 크기 및 백분율 계산
+                        const width = bb.bb_right - bb.bb_left;
+                        const height = bb.bb_bottom - bb.bb_top;
+                        const area = width * height;
+                        
+                        // 바운딩 박스 위치 백분율 변환
+                        const leftPercent = (bb.bb_left * 100).toFixed(1);
+                        const topPercent = (bb.bb_top * 100).toFixed(1);
+                        const rightPercent = (bb.bb_right * 100).toFixed(1);
+                        const bottomPercent = (bb.bb_bottom * 100).toFixed(1);
+                        
+                        // 바운딩 박스 크기 백분율 변환
+                        const widthPercent = (width * 100).toFixed(1);
+                        const heightPercent = (height * 100).toFixed(1);
+                        const areaPercent = (area * 10000).toFixed(1);
+                        
+                        // 날짜 포맷팅
+                        const detectionTime = new Date(bb.detection_time);
+                        const formattedDate = detectionTime.toLocaleString('ko-KR', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: false
+                        });
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${bb.record_id}</td>
+                            <td>${bb.class_name}</td>
+                            <td>${formattedDate}</td>
+                            <td>${bb.camera_id}</td>
+                            <td>${leftPercent}%</td>
+                            <td>${topPercent}%</td>
+                            <td>${rightPercent}%</td>
+                            <td>${bottomPercent}%</td>
+                            <td>${widthPercent}%</td>
+                            <td>${heightPercent}%</td>
+                            <td>${areaPercent}%²</td>
+                        `;
+                        detailedBody.appendChild(row);
+                    });
+                    
+                    // 요약 통계 업데이트 (백분율로 변환)
+                    const avgWidth = totalWidth / data.bb_data.length;
+                    const avgHeight = totalHeight / data.bb_data.length;
+                    document.getElementById('avgBoundingBoxSize').textContent = 
+                        `${(avgWidth * 100).toFixed(1)}% × ${(avgHeight * 100).toFixed(1)}%`;
+                    document.getElementById('maxBoundingBoxSize').textContent = 
+                        `${(maxWidth * 100).toFixed(1)}% × ${(maxHeight * 100).toFixed(1)}%`;
+                    document.getElementById('birdAnalysisCount').textContent = data.bb_data.length;
+                } else {
+                    document.getElementById('birdAnalysisTableBody').innerHTML = '<tr><td colspan="7" class="text-center">데이터가 없습니다. 필터링 버튼을 클릭하세요.</td></tr>';
+                    document.getElementById('detailedBirdDataBody').innerHTML = '<tr><td colspan="11" class="text-center">데이터가 없습니다. 필터링 버튼을 클릭하세요.</td></tr>';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('birdAnalysisTableBody').innerHTML = 
+                    '<tr><td colspan="7" class="text-center text-danger">데이터 로드 중 오류가 발생했습니다.</td></tr>';
+                document.getElementById('detailedBirdDataBody').innerHTML = 
+                    '<tr><td colspan="11" class="text-center text-danger">데이터 로드 중 오류가 발생했습니다.</td></tr>';
+            });
+            
+        // 바운딩 박스 정보 토글 버튼 이벤트 설정 함수
+        function setupBBInfoToggleButtons() {
+            // 이벤트 리스너를 중복 등록하지 않도록 합니다.
+            // onclick 속성으로 이미 이벤트가 연결되어 있으므로 별도 이벤트 리스너는 추가하지 않습니다.
+            console.log('바운딩 박스 토글 버튼 준비 완료');
+        }
+        
+        // 초기 바운딩 박스 토글 버튼 설정
+        setupBBInfoToggleButtons();
+    });
+    
+    // 바운딩 박스 정보 토글 함수 - 인라인 이벤트 핸들러용
+    function toggleBBInfo(button, detectionId) {
+        const row = button.closest('tr');
+        const bbInfoRow = row.nextElementSibling;
+        const bbInfoContainer = bbInfoRow.querySelector('.bb-info-container');
+        const loadingSpinner = bbInfoRow.querySelector('.loading-spinner');
+        
+        // 아이콘 변경
+        const icon = button.querySelector('i');
+        const isShowing = bbInfoRow.style.display !== 'none';
+        
+        if (isShowing) {
+            // 닫기
+            bbInfoRow.style.display = 'none';
+            icon.className = 'fas fa-plus';
+        } else {
+            // 열기
+            bbInfoRow.style.display = '';
+            icon.className = 'fas fa-minus';
+            
+            // 이미 로드된 데이터가 없으면 데이터 로드
+            if (bbInfoContainer.innerHTML === '') {
+                loadingSpinner.style.display = 'block';
+                
+                // 바운딩 박스 정보 로드
+                fetch(`/api/detection-bb-info/${detectionId}/`)
+                    .then(response => response.json())
+                    .then(data => {
+                        loadingSpinner.style.display = 'none';
+                        
+                        if (data.bb_info && data.bb_info.length > 0) {
+                            const bbInfoTable = document.createElement('table');
+                            bbInfoTable.className = 'table table-sm table-bordered mt-2';
+                            bbInfoTable.innerHTML = `
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>조류 종류</th>
+                                        <th>왼쪽</th>
+                                        <th>위</th>
+                                        <th>오른쪽</th>
+                                        <th>아래</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.bb_info.map(bb => `
+                                        <tr>
+                                            <td>${bb.record_id}</td>
+                                            <td>${bb.class_name}</td>
+                                            <td>${bb.bb_left.toFixed(2)}</td>
+                                            <td>${bb.bb_top.toFixed(2)}</td>
+                                            <td>${bb.bb_right.toFixed(2)}</td>
+                                            <td>${bb.bb_bottom.toFixed(2)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            `;
+                            bbInfoContainer.appendChild(bbInfoTable);
+                        } else {
+                            bbInfoContainer.innerHTML = '<p class="text-center mt-2">바운딩 박스 정보가 없습니다.</p>';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        loadingSpinner.style.display = 'none';
+                        bbInfoContainer.innerHTML = '<p class="text-danger mt-2">데이터 로드 중 오류가 발생했습니다.</p>';
+                    });
+            }
+        }
+    }
+</script>
+{% endblock %}

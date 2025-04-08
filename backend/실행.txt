@@ -1,0 +1,6 @@
+python manage.py makemigrations camera
+python manage.py migrate
+python manage.py runserver 0.0.0.0:8000
+
+# 프로덕션 환경에서는 아래 명령으로 waitress 사용
+# python run_server.py

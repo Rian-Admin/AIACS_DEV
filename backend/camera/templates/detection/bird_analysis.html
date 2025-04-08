@@ -1,0 +1,329 @@
+{% extends "detection/base_layout.html" %}
+{% load static %}
+{% load calculation_filters %}
+
+{% block title %}조류 분석 - 조류충돌방지시스템{% endblock %}
+
+{% block styles %}
+<style>
+    .filter-container {
+        background-color: white;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .table-container {
+        background-color: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        overflow-x: auto;
+    }
+    
+    .dashboard-card {
+        background-color: white;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        transition: all 0.3s ease;
+    }
+    
+    .dashboard-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+    
+    .loading-spinner {
+        text-align: center;
+        padding: 20px;
+    }
+    
+    .loading-spinner:after {
+        content: '';
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 3px solid #ccc;
+        border-top-color: #0d6efd;
+        animation: spin 1s infinite linear;
+        margin-left: 10px;
+        vertical-align: middle;
+    }
+    
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container container-main">
+    <h1 class="mb-4">조류 분석</h1>
+    
+    <div class="filter-container mb-3">
+        <div class="row">
+            <div class="col-md-3 mb-2">
+                <label for="analysisDateFrom" class="form-label">시작일</label>
+                <input type="date" class="form-control" id="analysisDateFrom">
+            </div>
+            <div class="col-md-3 mb-2">
+                <label for="analysisDateTo" class="form-label">종료일</label>
+                <input type="date" class="form-control" id="analysisDateTo">
+            </div>
+            <div class="col-md-3 mb-2">
+                <label for="analysisBirdClass" class="form-label">조류 종류</label>
+                <select class="form-select" id="analysisBirdClass">
+                    <option value="">모든 조류</option>
+                    {% for bird in birds %}
+                    <option value="{{ bird.class_id }}">{{ bird.bird_name_ko }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button id="filterAnalysis" class="btn btn-primary w-100">분석 시작</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="table-container">
+                <h4>바운딩 박스 크기 분석</h4>
+                <table class="table table-striped table-hover" id="bbAnalysisTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>조류 종류</th>
+                            <th>너비(px)</th>
+                            <th>높이(px)</th>
+                            <th>면적(px²)</th>
+                            <th>감지 시간</th>
+                            <th>카메라 ID</th>
+                            <th>계산</th>
+                        </tr>
+                    </thead>
+                    <tbody id="analysisTableBody">
+                        <!-- 데이터가 여기에 채워집니다 -->
+                    </tbody>
+                </table>
+                <div id="analysisLoading" class="text-center" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">로딩 중...</span>
+                    </div>
+                    <p>분석 데이터 로딩 중...</p>
+                </div>
+                <div id="analysisEmpty" class="text-center" style="display: none;">
+                    <p>분석할 데이터가 없습니다. 필터를 조정하고 분석 시작 버튼을 클릭하세요.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="dashboard-card h-100">
+                <h4>상세 분석</h4>
+                <div id="detailAnalysis">
+                    <div id="noSelectionInfo" class="text-center">
+                        <p class="my-4">분석을 위해 항목을 선택하세요</p>
+                    </div>
+                    <div id="analysisDetails" style="display: none;">
+                        <h5 id="selectedBirdName" class="mb-3"></h5>
+                        <div class="mb-3">
+                            <label class="form-label">실제 조류 크기 추정 (입력)</label>
+                            <div class="input-group mb-2">
+                                <input type="number" class="form-control" id="estimatedWidth" placeholder="너비 (cm)">
+                                <span class="input-group-text">cm</span>
+                            </div>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="estimatedHeight" placeholder="높이 (cm)">
+                                <span class="input-group-text">cm</span>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">픽셀당 실제 크기</label>
+                            <div class="input-group mb-2">
+                                <input type="text" class="form-control" id="pixelRatioWidth" readonly>
+                                <span class="input-group-text">cm/px (너비)</span>
+                            </div>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="pixelRatioHeight" readonly>
+                                <span class="input-group-text">cm/px (높이)</span>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">추정 거리</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="estimatedDistance" placeholder="거리 (m)">
+                                <span class="input-group-text">m</span>
+                            </div>
+                        </div>
+                        <div id="calculateResults" class="p-3 bg-light rounded mt-3" style="display: none;">
+                            <h6>계산 결과:</h6>
+                            <p>너비: <span id="resultWidth">-</span> cm</p>
+                            <p>높이: <span id="resultHeight">-</span> cm</p>
+                            <p>면적: <span id="resultArea">-</span> cm²</p>
+                            <p>예상 카메라 거리: <span id="resultDistance">-</span> m</p>
+                        </div>
+                        <button id="calculateBtn" class="btn btn-success w-100 mt-3">계산하기</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 날짜 초기화 (오늘 날짜와 한 달 전)
+    const analysisToday = new Date();
+    const analysisLastMonth = new Date();
+    analysisLastMonth.setMonth(analysisToday.getMonth() - 1);
+    
+    document.getElementById('analysisDateTo').valueAsDate = analysisToday;
+    document.getElementById('analysisDateFrom').valueAsDate = analysisLastMonth;
+    
+    // 조류 분석 필터링 및 계산 기능
+    document.getElementById('filterAnalysis').addEventListener('click', function() {
+        const dateFrom = document.getElementById('analysisDateFrom').value;
+        const dateTo = document.getElementById('analysisDateTo').value;
+        const birdClass = document.getElementById('analysisBirdClass').value;
+        
+        // 로딩 표시
+        document.getElementById('analysisTableBody').innerHTML = '';
+        document.getElementById('analysisLoading').style.display = 'block';
+        document.getElementById('analysisEmpty').style.display = 'none';
+        
+        let url = `/api/bird-analysis/?`;
+        if (dateFrom) url += `date_from=${dateFrom}&`;
+        if (dateTo) url += `date_to=${dateTo}&`;
+        if (birdClass) url += `bird_class=${birdClass}&`;
+        
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('analysisLoading').style.display = 'none';
+                const tableBody = document.getElementById('analysisTableBody');
+                
+                if (data.bb_data && data.bb_data.length > 0) {
+                    data.bb_data.forEach(bb => {
+                        // 바운딩 박스 크기 계산
+                        const width = bb.bb_right - bb.bb_left;
+                        const height = bb.bb_bottom - bb.bb_top;
+                        const area = width * height;
+                        
+                        // 날짜 포맷팅
+                        const detectionTime = new Date(bb.detection_time);
+                        const formattedDate = detectionTime.toLocaleDateString('ko-KR', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                        
+                        // 행 추가
+                        const row = document.createElement('tr');
+                        row.setAttribute('data-bb-id', bb.record_id);
+                        row.setAttribute('data-bird-name', bb.class_name);
+                        row.setAttribute('data-width', width.toFixed(2));
+                        row.setAttribute('data-height', height.toFixed(2));
+                        row.setAttribute('data-area', area.toFixed(2));
+                        
+                        row.innerHTML = `
+                            <td>${bb.record_id}</td>
+                            <td>${bb.class_name}</td>
+                            <td>${width.toFixed(2)}</td>
+                            <td>${height.toFixed(2)}</td>
+                            <td>${area.toFixed(2)}</td>
+                            <td>${formattedDate}</td>
+                            <td>${bb.camera_id}</td>
+                            <td><button class="btn btn-sm btn-primary analyze-btn">분석</button></td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                    
+                    // 분석 버튼에 이벤트 리스너 추가
+                    document.querySelectorAll('.analyze-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const row = this.closest('tr');
+                            const birdName = row.getAttribute('data-bird-name');
+                            const width = parseFloat(row.getAttribute('data-width'));
+                            const height = parseFloat(row.getAttribute('data-height'));
+                            
+                            // 상세 분석 패널 업데이트
+                            document.getElementById('noSelectionInfo').style.display = 'none';
+                            document.getElementById('analysisDetails').style.display = 'block';
+                            document.getElementById('selectedBirdName').textContent = birdName;
+                            
+                            // 현재 선택된 행 강조
+                            document.querySelectorAll('#analysisTableBody tr').forEach(r => r.classList.remove('table-primary'));
+                            row.classList.add('table-primary');
+                            
+                            // 입력 필드 초기화
+                            document.getElementById('estimatedWidth').value = '';
+                            document.getElementById('estimatedHeight').value = '';
+                            document.getElementById('estimatedDistance').value = '';
+                            document.getElementById('pixelRatioWidth').value = '';
+                            document.getElementById('pixelRatioHeight').value = '';
+                            document.getElementById('calculateResults').style.display = 'none';
+                            
+                            // 현재 크기 데이터 저장
+                            document.getElementById('calculateBtn').setAttribute('data-width', width);
+                            document.getElementById('calculateBtn').setAttribute('data-height', height);
+                            document.getElementById('calculateBtn').setAttribute('data-area', row.getAttribute('data-area'));
+                        });
+                    });
+                } else {
+                    document.getElementById('analysisEmpty').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('analysisLoading').style.display = 'none';
+                document.getElementById('analysisEmpty').style.display = 'block';
+                document.getElementById('analysisEmpty').innerHTML = '<p class="text-danger">데이터 로드 중 오류가 발생했습니다.</p>';
+            });
+    });
+    
+    // 계산하기 버튼 이벤트 리스너
+    document.getElementById('calculateBtn').addEventListener('click', function() {
+        const width = parseFloat(this.getAttribute('data-width'));
+        const height = parseFloat(this.getAttribute('data-height'));
+        const area = parseFloat(this.getAttribute('data-area'));
+        
+        const estWidth = parseFloat(document.getElementById('estimatedWidth').value);
+        const estHeight = parseFloat(document.getElementById('estimatedHeight').value);
+        const estDistance = parseFloat(document.getElementById('estimatedDistance').value);
+        
+        if (isNaN(estWidth) || isNaN(estHeight)) {
+            alert('조류의 실제 크기를 입력해주세요.');
+            return;
+        }
+        
+        // 픽셀당 실제 크기 계산
+        const pixelRatioWidth = estWidth / width;
+        const pixelRatioHeight = estHeight / height;
+        
+        document.getElementById('pixelRatioWidth').value = pixelRatioWidth.toFixed(4);
+        document.getElementById('pixelRatioHeight').value = pixelRatioHeight.toFixed(4);
+        
+        // 결과 표시
+        document.getElementById('calculateResults').style.display = 'block';
+        document.getElementById('resultWidth').textContent = estWidth.toFixed(2);
+        document.getElementById('resultHeight').textContent = estHeight.toFixed(2);
+        document.getElementById('resultArea').textContent = (pixelRatioWidth * pixelRatioHeight * area).toFixed(2);
+        
+        if (!isNaN(estDistance)) {
+            document.getElementById('resultDistance').textContent = estDistance.toFixed(2);
+        } else {
+            document.getElementById('resultDistance').textContent = '입력 필요';
+        }
+    });
+});
+</script>
+{% endblock %} 

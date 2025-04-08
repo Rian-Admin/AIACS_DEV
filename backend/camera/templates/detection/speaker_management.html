@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스피커 관리 - 조류충돌방지시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f8f9fa;
+            padding-top: 0;
+            margin: 0;
+        }
+        
+        .system-header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            margin-bottom: 0;
+        }
+        
+        .system-title {
+            font-weight: 600;
+            font-size: 1.4rem;
+            margin: 0;
+        }
+        
+        .system-subtitle {
+            font-weight: 300;
+            font-size: 0.9rem;
+            margin-top: 0.2rem;
+        }
+        
+        .nav-tabs {
+            background-color: #f8f9fa;
+            padding-top: 0.5rem;
+            border-bottom: 1px solid #dee2e6;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .nav-link {
+            color: #495057;
+            font-weight: 500;
+            padding: 0.7rem 1.5rem;
+            border-radius: 0.25rem 0.25rem 0 0;
+            transition: all 0.2s ease;
+        }
+        
+        .nav-link:hover {
+            background-color: rgba(13, 110, 253, 0.1);
+            color: #0d6efd;
+        }
+        
+        .nav-link.active {
+            font-weight: bold;
+            color: #0d6efd;
+            background-color: white;
+            border-color: #dee2e6 #dee2e6 #fff;
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
+        }
+        
+        .container-main {
+            padding-top: 2rem;
+        }
+        
+        .status-card {
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1.5rem;
+            background-color: white;
+        }
+        
+        .volume-slider {
+            width: 100%;
+        }
+        
+        .sound-card {
+            cursor: pointer;
+        }
+        
+        /* 기울어진 배경을 가진 그라데이션 헤더 */
+        .bg-gradient-primary {
+            background: linear-gradient(45deg, #4e73df, #2e59d9);
+        }
+        
+        /* 알림 색상 */
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .alert-info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <!-- 헤더 -->
+    <header class="system-header">
+        <div class="container">
+            <h1 class="system-title">
+                <i class="fas fa-dove"></i> 조류충돌방지시스템
+            </h1>
+            <p class="system-subtitle">스피커 관리 페이지</p>
+        </div>
+    </header>
+
+    <!-- 탭 네비게이션 -->
+    <div class="container">
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a class="nav-link" href="/" target="_top">메인 대시보드</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/camera-management/" target="_top">카메라 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/db-management/" target="_top">데이터베이스 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/model-management/" target="_top">모델 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link active" href="/speaker-management/" target="_top">스피커 관리</a>
+            </li>
+        </ul>
+    </div>
+
+    <div class="container container-main">
+        <!-- 알림 영역 -->
+        <div id="alertContainer"></div>
+        
+        <!-- 메인 컨트롤 패널 -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-gradient-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-gamepad"></i> 스피커 컨트롤 패널</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <!-- 연결 관리 -->
+                            <div class="col-md-4">
+                                <div class="card border-0 shadow-sm h-100">
+                                    <div class="card-body">
+                                        <h5 class="card-title border-bottom pb-2">
+                                            <i class="fas fa-plug text-primary"></i> 서버 연결
+                                        </h5>
+                                        <div class="alert" id="connectionStatus" role="alert">
+                                            <strong>상태:</strong> <span id="statusText">확인 중...</span>
+                                        </div>
+                                        <form id="serverConnectForm">
+                                            <div class="row mb-3">
+                                                <div class="col-md-8">
+                                                    <input type="text" class="form-control" id="serverAddress" placeholder="서버 주소 (예: 192.168.0.10)" value="192.168.219.15">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <input type="number" class="form-control" id="serverPort" placeholder="포트" value="9090">
+                                                </div>
+                                            </div>
+                                            <div class="d-flex gap-2">
+                                                <button type="submit" class="btn btn-primary flex-grow-1">
+                                                    <i class="fas fa-plug"></i> 연결
+                                                </button>
+                                                <button type="button" class="btn btn-danger flex-grow-1" id="disconnectButton">
+                                                    <i class="fas fa-unlink"></i> 해제
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 음원 제어 -->
+                            <div class="col-md-4">
+                                <div class="card border-0 shadow-sm h-100">
+                                    <div class="card-body">
+                                        <h5 class="card-title border-bottom pb-2">
+                                            <i class="fas fa-music text-primary"></i> 음원 제어
+                                        </h5>
+                                        <div class="mb-3">
+                                            <label for="quickSoundSelect" class="form-label">빠른 음원 선택:</label>
+                                            <select class="form-select" id="quickSoundSelect">
+                                                <option value="" selected>음원을 선택하세요</option>
+                                                <option value="0">Sound 0</option>
+                                                <option value="1">Sound 1</option>
+                                                <option value="2">Sound 2</option>
+                                                <option value="3">Sound 3</option>
+                                                <option value="4">Sound 4</option>
+                                                <option value="5">Sound 5</option>
+                                                <option value="6">Sound 6</option>
+                                                <option value="7">Sound 7</option>
+                                                <option value="8">Sound 8</option>
+                                                <option value="9">Sound 9</option>
+                                            </select>
+                                        </div>
+                                        <div class="mb-3">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" id="repeatModeSwitch">
+                                                <label class="form-check-label" for="repeatModeSwitch">반복 재생</label>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <button id="quickPlayBtn" class="btn btn-success flex-grow-1">
+                                                <i class="fas fa-play"></i> 재생
+                                            </button>
+                                            <button id="quickStopBtn" class="btn btn-danger flex-grow-1">
+                                                <i class="fas fa-stop"></i> 정지
+                                            </button>
+                                        </div>
+                                        <div class="mt-3">
+                                            <div class="alert alert-info p-2" id="playbackInfo">
+                                                <small>현재 재생 중: <span id="currentPlayback">없음</span></small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 볼륨 제어 -->
+                            <div class="col-md-4">
+                                <div class="card border-0 shadow-sm h-100">
+                                    <div class="card-body">
+                                        <h5 class="card-title border-bottom pb-2">
+                                            <i class="fas fa-volume-up text-primary"></i> 볼륨 제어
+                                        </h5>
+                                        <div class="mb-3">
+                                            <label for="volumeSlider" class="form-label">볼륨: <span id="volumeValue">50</span>%</label>
+                                            <input type="range" class="form-range" min="0" max="100" value="50" id="volumeSlider">
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <button class="btn btn-outline-secondary btn-sm" id="volumeBtn20">20%</button>
+                                            <button class="btn btn-outline-secondary btn-sm" id="volumeBtn50">50%</button>
+                                            <button class="btn btn-outline-secondary btn-sm" id="volumeBtn80">80%</button>
+                                            <button class="btn btn-outline-secondary btn-sm" id="volumeBtn100">100%</button>
+                                        </div>
+                                        <div class="mt-3">
+                                            <button class="btn btn-primary w-100" id="setVolumeBtn">
+                                                <i class="fas fa-save"></i> 볼륨 설정 적용
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // 알림 메시지를 표시하는 컨테이너
+            const alertContainer = $('<div id="alertContainer" class="position-fixed top-0 end-0 p-3" style="z-index: 1050;"></div>');
+            $('body').append(alertContainer);
+            
+            // 알림 표시 함수
+            function showAlert(type, message, duration = 3000) {
+                const alert = $(`
+                    <div class="toast align-items-center text-white bg-${type} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                        <div class="d-flex">
+                            <div class="toast-body">
+                                ${message}
+                            </div>
+                            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                        </div>
+                    </div>
+                `);
+                
+                alertContainer.append(alert);
+                const toast = new bootstrap.Toast(alert[0], { delay: duration });
+                toast.show();
+                
+                // 지정된 시간 후 제거
+                setTimeout(() => {
+                    alert.remove();
+                }, duration + 500);
+            }
+            
+            // 커넥션 상태 UI 업데이트 향상
+            function updateConnectionStatus(connected, message) {
+                const statusElement = $('#connectionStatus');
+                const statusText = $('#statusText');
+                
+                if(connected) {
+                    statusElement.removeClass('alert-danger').addClass('alert-success');
+                    statusText.html(`<i class="fas fa-check-circle"></i> 연결됨: ${message || ''}`);
+                } else {
+                    statusElement.removeClass('alert-success').addClass('alert-danger');
+                    statusText.html(`<i class="fas fa-exclamation-circle"></i> 연결 끊김: ${message || ''}`);
+                }
+            }
+            
+            // 재생 상태 표시 개선
+            function updatePlaybackInfo(isPlaying, soundIndex, isRepeat) {
+                const playbackInfo = $('#playbackInfo');
+                const currentPlayback = $('#currentPlayback');
+                
+                if(isPlaying) {
+                    playbackInfo.removeClass('alert-info').addClass('alert-success');
+                    const repeatText = isRepeat ? ' (반복)' : ' (한번)';
+                    currentPlayback.text(`Sound ${soundIndex}${repeatText}`);
+                } else {
+                    playbackInfo.removeClass('alert-success').addClass('alert-info');
+                    currentPlayback.text('없음');
+                }
+            }
+            
+            // 상태 업데이트 함수 개선
+            function updateStatus() {
+                $.ajax({
+                    url: '/camera/speaker/status/',
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            const status = response.data;
+                            
+                            // 연결 상태 업데이트
+                            updateConnectionStatus(status.connected, status.server_address);
+                            
+                            // 볼륨 업데이트
+                            const vol = status.current_volume || 0;
+                            $('#volumeValue').text(vol);
+                            $('#volumeSlider').val(vol);
+                            
+                            // 재생 상태 업데이트
+                            updatePlaybackInfo(
+                                status.is_playing, 
+                                status.current_sound_index, 
+                                status.is_repeat_mode
+                            );
+                            
+                            // 재생 중이면 정지 버튼 활성화
+                            $('#quickStopBtn').prop('disabled', !status.is_playing);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('상태 조회 오류:', error);
+                        showAlert('danger', '상태 조회 중 오류가 발생했습니다');
+                    }
+                });
+            }
+            
+            // 음원 재생 함수
+            function playSound(soundIndex, repeat) {
+                $.ajax({
+                    url: '/camera/speaker/play_sound/',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        sound_index: soundIndex,
+                        repeat: repeat
+                    }),
+                    success: function(response) {
+                        if(response.status === 'success') {
+                            showAlert('success', response.message);
+                            updateStatus();
+                        } else {
+                            showAlert('danger', response.message || '음원 재생 실패');
+                        }
+                    },
+                    error: function(xhr) {
+                        const response = xhr.responseJSON || {};
+                        showAlert('danger', response.message || '음원 재생 중 오류가 발생했습니다');
+                    }
+                });
+            }
+            
+            // 음원 정지 함수
+            function stopSound() {
+                $.ajax({
+                    url: '/camera/speaker/stop_sound/',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({}),
+                    success: function(response) {
+                        if(response.status === 'success') {
+                            showAlert('success', response.message);
+                            updateStatus();
+                        } else {
+                            showAlert('danger', response.message || '음원 정지 실패');
+                        }
+                    },
+                    error: function(xhr) {
+                        const response = xhr.responseJSON || {};
+                        showAlert('danger', response.message || '음원 정지 중 오류가 발생했습니다');
+                    }
+                });
+            }
+            
+            // 볼륨 설정 함수
+            function setVolume(volume) {
+                $.ajax({
+                    url: '/camera/speaker/set_volume/',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ volume: volume }),
+                    success: function(response) {
+                        if(response.status === 'success') {
+                            showAlert('success', `볼륨이 ${volume}%로 설정되었습니다`);
+                            updateStatus();
+                        } else {
+                            showAlert('danger', response.message || '볼륨 설정 실패');
+                        }
+                    },
+                    error: function(xhr) {
+                        const response = xhr.responseJSON || {};
+                        showAlert('danger', response.message || '볼륨 설정 중 오류가 발생했습니다');
+                    }
+                });
+            }
+            
+            // 초기 상태 로드
+            updateStatus();
+            
+            // 5초마다 상태 자동 업데이트
+            setInterval(updateStatus, 5000);
+            
+            // 정지 버튼 초기 비활성화
+            $('#quickStopBtn').prop('disabled', true);
+            
+            // 이벤트 핸들러 등록
+            $('#quickPlayBtn').click(function() {
+                const soundIndex = $('#quickSoundSelect').val();
+                if(!soundIndex) {
+                    showAlert('danger', '음원을 먼저 선택하세요');
+                    return;
+                }
+                
+                const repeat = $('#repeatModeSwitch').prop('checked');
+                playSound(parseInt(soundIndex), repeat);
+            });
+            
+            $('#quickStopBtn').click(function() {
+                stopSound();
+            });
+            
+            $('#setVolumeBtn').click(function() {
+                const volume = parseInt($('#volumeSlider').val());
+                setVolume(volume);
+            });
+            
+            $('#volumeBtn20').click(function() { setVolume(20); });
+            $('#volumeBtn50').click(function() { setVolume(50); });
+            $('#volumeBtn80').click(function() { setVolume(80); });
+            $('#volumeBtn100').click(function() { setVolume(100); });
+            
+            // 서버 연결 폼 제출
+            $('#serverConnectForm').submit(function(e) {
+                e.preventDefault();
+                const serverAddress = $('#serverAddress').val();
+                const serverPort = parseInt($('#serverPort').val());
+                
+                if(!serverAddress) {
+                    showAlert('danger', '서버 주소를 입력하세요');
+                    return;
+                }
+                
+                $.ajax({
+                    url: '/camera/speaker/connect/',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        server_address: serverAddress,
+                        server_port: serverPort
+                    }),
+                    success: function(response) {
+                        if(response.status === 'success') {
+                            showAlert('success', response.message);
+                            updateStatus();
+                        } else {
+                            showAlert('danger', response.message || '서버 연결 실패');
+                        }
+                    },
+                    error: function(xhr) {
+                        const response = xhr.responseJSON || {};
+                        showAlert('danger', response.message || '서버 연결 중 오류가 발생했습니다');
+                    }
+                });
+            });
+            
+            // 연결 해제 버튼
+            $('#disconnectButton').click(function() {
+                $.ajax({
+                    url: '/camera/speaker/disconnect/',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({}),
+                    success: function(response) {
+                        if(response.status === 'success') {
+                            showAlert('success', response.message);
+                            updateStatus();
+                        } else {
+                            showAlert('danger', response.message || '연결 해제 실패');
+                        }
+                    },
+                    error: function(xhr) {
+                        const response = xhr.responseJSON || {};
+                        showAlert('danger', response.message || '연결 해제 중 오류가 발생했습니다');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html> 
