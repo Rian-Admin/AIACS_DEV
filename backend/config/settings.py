@@ -53,8 +53,8 @@ CORS_ALLOW_ALL_ORIGINS = True  # 개발 단계에서는 모든 오리진 허용
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://192.168.219.215:3000",
-    "http://192.168.219.215",
+    "http://192.168.219.78:3000",
+    "http://192.168.219.78",
     "http://aiacs.kr",
     "http://www.aiacs.kr",
 ]
@@ -92,8 +92,8 @@ X_FRAME_OPTIONS = 'SAMEORIGIN'
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://192.168.219.215:3000",
-    "http://192.168.219.215",
+    "http://192.168.219.78:3000",
+    "http://192.168.219.78",
     "http://aiacs.kr",
     "http://www.aiacs.kr",
 ]

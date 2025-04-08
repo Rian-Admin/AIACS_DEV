@@ -81,7 +81,7 @@ function TabPanel(props) {
 const RadarControl = ({ language }) => {
   // 상태 관리
   const [currentTab, setCurrentTab] = useState(0);
-  const [ip, setIp] = useState('192.168.219.215');
+  const [ip, setIp] = useState('192.168.219.78');
   const [port, setPort] = useState('4102');
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
