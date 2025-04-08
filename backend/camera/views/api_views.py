@@ -9,7 +9,6 @@ from ..db import db_adapter
 from ..models import Camera, DetectionInfo
 from datetime import datetime
 from ..yolo.detector import ObjectDetector
-from ..hardware.bird_controller import BirdController
 from ..hardware.ptz_manager import PTZManager
 
 # 로그 비활성화
@@ -242,48 +241,6 @@ def get_yolo_info(request):
         return JsonResponse({
             'status': 'error',
             'message': str(e)
-        }, status=500)
-
-@csrf_exempt
-def enable_controller(request):
-    """조류퇴치기 활성화 API"""
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': '잘못된 요청 방식'}, status=405)
-    
-    try:
-        controller = BirdController.get_instance()
-        controller.enable_controller()
-        
-        return JsonResponse({
-            'status': 'success',
-            'message': '조류퇴치기가 활성화되었습니다'
-        })
-    except Exception as e:
-        logger.error(f"조류퇴치기 활성화 오류: {str(e)}")
-        return JsonResponse({
-            'status': 'error',
-            'message': f'오류: {str(e)}'
-        }, status=500)
-
-@csrf_exempt
-def disable_controller(request):
-    """조류퇴치기 비활성화 API"""
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': '잘못된 요청 방식'}, status=405)
-    
-    try:
-        controller = BirdController.get_instance()
-        controller.disable_controller()
-        
-        return JsonResponse({
-            'status': 'success',
-            'message': '조류퇴치기가 비활성화되었습니다'
-        })
-    except Exception as e:
-        logger.error(f"조류퇴치기 비활성화 오류: {str(e)}")
-        return JsonResponse({
-            'status': 'error',
-            'message': f'오류: {str(e)}'
         }, status=500)
 
 @csrf_exempt

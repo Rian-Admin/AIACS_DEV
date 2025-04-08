@@ -10,7 +10,6 @@ from django.utils import timezone
 from ..yolo.detector import ObjectDetector
 from ..stream.stream_handler import StreamHandler
 from ..db import db_adapter
-from ..hardware.bird_controller import BirdController
 from ..utils.drawing import draw_detections
 
 # 로그 비활성화
@@ -33,7 +32,7 @@ class VideoCamera:
         self._last_results = None
         self._last_processed_result = None
         self._last_db_update = time.time()
-        self._db_update_interval = 10  # DB 업데이트 간격 증가 (5초->10초)
+        self._db_update_interval = 10 # DB 업데이트 간격 증가 (5초->10초)
         self._capture_timing_stats = []
         
         # 마지막 유효 프레임 저장 변수 초기화
@@ -67,9 +66,6 @@ class VideoCamera:
             
             # DB 어댑터
             self.db = db_adapter
-            
-            # 조류퇴치기 컨트롤러 초기화
-            self.bird_controller = BirdController()
             
             # 성능 모니터링
             self.stats = {
@@ -283,7 +279,7 @@ class VideoCamera:
             return b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + b'\xff\xd8\xff\xd9' + b'\r\n'
     
     def _process_detection_results(self, boxes, frame_width, frame_height):
-        """감지 결과 처리 - 조류퇴치 및 DB 업데이트"""
+        """감지 결과 처리 - DB 업데이트"""
         current_time = time.time()
         
         # 감지된 객체가 있는지 확인
@@ -295,13 +291,6 @@ class VideoCamera:
         
         # 가장 큰 객체 찾기
         best_box = self._find_largest_box(boxes, frame_width, frame_height)
-        
-        # 조류퇴치기 제어 (객체가 있는 경우만)
-        if best_box:
-            self.bird_controller.process_detection(best_box, frame_width, frame_height)
-        else:
-            # 객체가 없으면 감지 상태 초기화
-            self.bird_controller.reset_detection()
         
         # DB에 감지 정보 저장
         try:

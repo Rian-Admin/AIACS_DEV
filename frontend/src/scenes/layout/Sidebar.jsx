@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Box, Drawer, IconButton, Typography, List, ListItem, ListItemButton, ListItemIcon, ListItemText } from '@mui/material';
 import { ChevronLeft as ChevronLeftIcon } from '@mui/icons-material';
 import { translate } from '../../utils/i18n';
+import rianLogo from '../../assets/images/rian_60px.png';
 
 // 임포트할 아이콘들
 import {
@@ -64,9 +65,9 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, language, highestRiskLevel }
             borderBottom: '1px solid #1e3a5a',
           }}
         >
-          <Typography variant="h6" fontWeight="bold">
-            AIACS
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            {/* 로고와 텍스트 제거 */}
+          </Box>
           <IconButton onClick={() => setIsSidebarOpen(false)} sx={{ color: 'white' }}>
             <ChevronLeftIcon />
           </IconButton>

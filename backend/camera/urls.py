@@ -2,7 +2,7 @@
 from django.urls import path
 from .views.camera_views import index, camera_feed
 from .views.api_views import get_recent_detections, get_detection_stats, get_db_status, get_cameras
-from .views.api_views import set_yolo_conf, get_yolo_info, enable_controller, disable_controller
+from .views.api_views import set_yolo_conf, get_yolo_info
 from .views import api_views
 from .views.camera_management import camera_management_view, add_camera, update_camera, delete_camera, clear_camera_cache, upload_video, get_camera
 from .views.db_management import db_management_view, bird_analysis_view, get_filtered_detections, get_detection_bb_info, get_bird_analysis_data
@@ -47,10 +47,6 @@ urlpatterns = [
     path('api/yolo/set-conf/', set_yolo_conf, name='set_yolo_conf'),
     path('api/yolo/switch-model/', switch_model, name='switch_model'),
     path('api/yolo/delete-model/', delete_model, name='delete_model'),
-    
-    # API - 조류퇴치기 제어
-    path('api/controller/enable', enable_controller, name='enable_controller'),
-    path('api/controller/disable', disable_controller, name='disable_controller'),
     
     # API - PTZ 카메라 제어
     path('api/ptz/control/', control_ptz, name='control_ptz'),

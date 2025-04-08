@@ -359,14 +359,6 @@
                 <span class="badge badge-danger ml-2">오프라인: <span id="offlineCount">0</span></span>
             </div>
             <div>
-                <div class="btn-group mr-2">
-                    <button class="btn btn-sm btn-success" id="enableControllerBtn">
-                        <i class="fas fa-power-off"></i> 퇴치기 켜기
-                    </button>
-                    <button class="btn btn-sm btn-danger" id="disableControllerBtn">
-                        <i class="fas fa-power-off"></i> 퇴치기 끄기
-                    </button>
-                </div>
                 <button class="btn btn-sm btn-outline-secondary" id="refreshAllBtn">
                     <i class="fas fa-sync-alt"></i> 모든 카메라 새로고침
                 </button>
@@ -637,41 +629,6 @@
             });
         }
         
-        // 퇴치기 제어 함수
-        function enableController() {
-            fetch('/api/controller/enable', {
-                method: 'POST'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    showNotification('퇴치기가 활성화되었습니다', 'success');
-                } else {
-                    showNotification('퇴치기 활성화 실패: ' + data.message, 'error');
-                }
-            })
-            .catch(error => {
-                showNotification('서버 오류: ' + error.message, 'error');
-            });
-        }
-        
-        function disableController() {
-            fetch('/api/controller/disable', {
-                method: 'POST'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    showNotification('퇴치기가 비활성화되었습니다', 'success');
-                } else {
-                    showNotification('퇴치기 비활성화 실패: ' + data.message, 'error');
-                }
-            })
-            .catch(error => {
-                showNotification('서버 오류: ' + error.message, 'error');
-            });
-        }
-        
         // PTZ 위치 정보 가져오기 함수
         function getPtzPosition(cameraId) {
             fetch(`/api/ptz/position/${cameraId}/`)
@@ -787,10 +744,6 @@
             
             // 카메라 상태 카운터 초기화
             updateCameraCounters();
-            
-            // 퇴치기 제어 버튼 이벤트 추가
-            document.getElementById('enableControllerBtn').addEventListener('click', enableController);
-            document.getElementById('disableControllerBtn').addEventListener('click', disableController);
             
             // PTZ 관련 이벤트 리스너 추가
             // PTZ 버튼 이벤트 설정

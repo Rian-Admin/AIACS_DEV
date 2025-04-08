@@ -12,7 +12,10 @@ import {
 } from '@mui/material';
 import {
   Fullscreen as FullscreenIcon,
-  CameraAlt as CameraIcon
+  CameraAlt as CameraIcon,
+  VolumeUp as VolumeUpIcon,
+  VolumeOff as VolumeOffIcon,
+  MusicNote as MusicNoteIcon
 } from '@mui/icons-material';
 import { MapContainer, TileLayer, CircleMarker, Popup, Polygon } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -119,6 +122,19 @@ const MapView = ({
   const [currentTab, setCurrentTab] = useState(0);
   // 레이더 오버레이 표시 여부
   const [showRadarOverlay, setShowRadarOverlay] = useState(true);
+  // 카메라 오버레이 표시 여부
+  const [showCameraOverlay, setShowCameraOverlay] = useState(true);
+  // 컴포넌트 마운트 상태 추적
+  const isMountedRef = useRef(true);
+
+  // 마운트/언마운트 처리
+  useEffect(() => {
+    isMountedRef.current = true;
+    
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // ------ 레이더 관련 상태 ------
   const [plotData, setPlotData] = useState([]);
@@ -148,7 +164,12 @@ const MapView = ({
       setTrackData([]);
     }
     
-    setCurrentTab(newValue);
+    // 탭 전환 시 MapContainer가 즉시 제거되고 재생성되도록 딜레이 추가
+    setTimeout(() => {
+      if (isMountedRef.current) {
+        setCurrentTab(newValue);
+      }
+    }, 50);
   };
 
   // ------ 카메라 목록 가져오기(예시) ------
@@ -529,6 +550,30 @@ const MapView = ({
     };
   }, [currentTab]);
 
+  // ------ 스피커 제어 함수 ------
+  const playSpeakerSound = (soundId) => {
+    axios.post('/camera/speaker/play_sound/', { 
+      sound_index: soundId,
+      repeat: false
+    })
+      .then(response => {
+        console.log(`스피커 사운드 ${soundId} 재생 성공:`, response.data);
+      })
+      .catch(error => {
+        console.error(`스피커 사운드 ${soundId} 재생 오류:`, error);
+      });
+  };
+
+  const stopSpeakerSound = () => {
+    axios.post('/camera/speaker/stop_sound/')
+      .then(response => {
+        console.log('스피커 사운드 중지 성공:', response.data);
+      })
+      .catch(error => {
+        console.error('스피커 사운드 중지 오류:', error);
+      });
+  };
+
   return (
     <Paper
       elevation={0}
@@ -572,8 +617,9 @@ const MapView = ({
           <Tab label={translate('레이더 모니터링', 'Radar Monitoring', language)} />
         </Tabs>
 
-        {/* 레이더 오버레이 토글 버튼 */}
-        <Box sx={{ p: 1 }}>
+        {/* 컨트롤 버튼 영역 */}
+        <Box sx={{ p: 1, display: 'flex' }}>
+          {/* 레이더 오버레이 토글 버튼 */}
           <Tooltip title={translate('레이더 오버레이', 'Radar Overlay', language)}>
             <IconButton
               size="small"
@@ -594,6 +640,73 @@ const MapView = ({
               >
                 <path d="M8 1a7 7 0 0 1 7 7v.5A3.49 3.49 0 0 0 13.5 8a.5.5 0 0 1 0-1 4.49 4.49 0 0 1 3.5 4.5A3.5 3.5 0 0 1 13.5 15h-9a3.5 3.5 0 0 1-3.5-3.5A4.49 4.49 0 0 1 4.5 7a.5.5 0 0 1 0 1A3.49 3.49 0 0 0 3 9.5V8a7 7 0 0 1 7-7M8 0a8 8 0 0 0-8 8 4.5 4.5 0 0 0 1.7 3.5A4.49 4.49 0 0 0 0 15.5 4.5 4.5 0 0 0 4.5 20h7a4.5 4.5 0 0 0 4.5-4.5 4.49 4.49 0 0 0-1.7-3.5A4.5 4.5 0 0 0 16 8a8 8 0 0 0-8-8M7 5.5a.5.5 0 0 1 1 0v3a.5.5 0 0 1-1 0z" />
               </svg>
+            </IconButton>
+          </Tooltip>
+
+          {/* 카메라 오버레이 토글 버튼 */}
+          <Tooltip title={translate('카메라 오버레이', 'Camera Overlay', language)}>
+            <IconButton
+              size="small"
+              sx={{
+                color: showCameraOverlay ? 'lightblue' : 'white',
+                mr: 1
+              }}
+              onClick={() => setShowCameraOverlay((prev) => !prev)}
+            >
+              <CameraIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          {/* 스피커 사운드 0 시작 버튼 */}
+          <Tooltip title={translate('사운드 0 시작', 'Play Sound 0', language)}>
+            <IconButton
+              size="small"
+              sx={{
+                color: 'white',
+                backgroundColor: '#1e3a5a',
+                mr: 1,
+                '&:hover': { backgroundColor: '#2c4f7c' }
+              }}
+              onClick={() => playSpeakerSound(0)}
+            >
+              <Box display="flex" alignItems="center">
+                <VolumeUpIcon fontSize="small" />
+                <Typography variant="caption" sx={{ ml: 0.5 }}>0</Typography>
+              </Box>
+            </IconButton>
+          </Tooltip>
+
+          {/* 스피커 사운드 1 시작 버튼 */}
+          <Tooltip title={translate('사운드 1 시작', 'Play Sound 1', language)}>
+            <IconButton
+              size="small"
+              sx={{
+                color: 'white',
+                backgroundColor: '#1e3a5a',
+                mr: 1,
+                '&:hover': { backgroundColor: '#2c4f7c' }
+              }}
+              onClick={() => playSpeakerSound(1)}
+            >
+              <Box display="flex" alignItems="center">
+                <MusicNoteIcon fontSize="small" />
+                <Typography variant="caption" sx={{ ml: 0.5 }}>1</Typography>
+              </Box>
+            </IconButton>
+          </Tooltip>
+
+          {/* 스피커 사운드 중단 버튼 */}
+          <Tooltip title={translate('사운드 중단', 'Stop Sound', language)}>
+            <IconButton
+              size="small"
+              sx={{
+                color: 'white',
+                backgroundColor: '#831919', 
+                '&:hover': { backgroundColor: '#a82626' }
+              }}
+              onClick={stopSpeakerSound}
+            >
+              <VolumeOffIcon fontSize="small" />
             </IconButton>
           </Tooltip>
         </Box>
@@ -617,98 +730,102 @@ const MapView = ({
           <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
             {/* 지도 영역 (전체 화면) */}
             <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
-              <MapContainer
-                center={mapCenter}
-                zoom={17}
-                style={{ width: '100%', height: '100%', borderRadius: '5px' }}
-                ref={actualMapRef}
-                key={`map-container-${currentTab}`}
-              >
-                {/* 위성 타일 레이어 */}
-                <TileLayer
-                  url="https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
-                  subdomains={['mt0', 'mt1', 'mt2', 'mt3']}
-                  attribution="&copy; Google Maps"
-                  maxZoom={20}
-                />
+              {currentTab === 0 && (
+                <MapContainer
+                  center={mapCenter}
+                  zoom={17}
+                  style={{ width: '100%', height: '100%', borderRadius: '5px' }}
+                  ref={actualMapRef}
+                  key={`map-container-${currentTab}`}
+                >
+                  {/* 위성 타일 레이어 */}
+                  <TileLayer
+                    url="https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+                    subdomains={['mt0', 'mt1', 'mt2', 'mt3']}
+                    attribution="&copy; Google Maps"
+                    maxZoom={20}
+                  />
 
-                {/* 레이더 오버레이 */}
-                {showRadarOverlay && <MapRadarOverlay language={language} />}
+                  {/* 레이더 오버레이 */}
+                  {showRadarOverlay && <MapRadarOverlay language={language} />}
 
-                {/* 카메라 마커 및 시야각 표시 */}
-                {cameras.map((camera) => (
-                  <React.Fragment key={camera.id}>
-                    <CircleMarker
-                      center={camera.position}
-                      radius={10}
-                      pathOptions={{
-                        fillColor: camera.color,
-                        fillOpacity: 1,
-                        color: '#ffffff',
-                        weight: 2.5
-                      }}
-                    >
-                      <Popup>
-                        {translate(`카메라${camera.id}`, `Camera ${camera.id}`, language)}
-                      </Popup>
-                    </CircleMarker>
+                  {/* 카메라 마커 및 시야각 표시 */}
+                  {cameras.map((camera) => (
+                    <React.Fragment key={camera.id}>
+                      <CircleMarker
+                        center={camera.position}
+                        radius={10}
+                        pathOptions={{
+                          fillColor: camera.color,
+                          fillOpacity: 1,
+                          color: '#ffffff',
+                          weight: 2.5
+                        }}
+                      >
+                        <Popup>
+                          {translate(`카메라${camera.id}`, `Camera ${camera.id}`, language)}
+                        </Popup>
+                      </CircleMarker>
 
-                    <Polygon
-                      positions={createViewField(
-                        camera.position,
-                        camera.direction,
-                        camera.angle,
-                        300
-                      )}
-                      pathOptions={{
-                        color: `${camera.color}B3`, // 대략 70% 투명도
-                        fillColor: `${camera.color}33`, // 대략 20% 투명도
-                        fillOpacity: 0.7,
-                        weight: 2,
-                        smoothFactor: 1
-                      }}
-                    />
-                  </React.Fragment>
-                ))}
-              </MapContainer>
+                      <Polygon
+                        positions={createViewField(
+                          camera.position,
+                          camera.direction,
+                          camera.angle,
+                          300
+                        )}
+                        pathOptions={{
+                          color: `${camera.color}B3`, // 대략 70% 투명도
+                          fillColor: `${camera.color}33`, // 대략 20% 투명도
+                          fillOpacity: 0.7,
+                          weight: 2,
+                          smoothFactor: 1
+                        }}
+                      />
+                    </React.Fragment>
+                  ))}
+                </MapContainer>
+              )}
             </Box>
 
             {/* 카메라 스트림 오버레이 (지도 위에 표시) */}
-            <Box
-              sx={{
-                position: 'absolute',
-                top: 16,
-                right: 16,
-                width: '25%', // 20%에서 25%로 너비 증가
-                zIndex: 1000,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 1.5 // 간격 약간 증가
-              }}
-            >
-              {cameras.slice(0, 3).map((camera) => (
-                <Paper
-                  key={camera.id}
-                  elevation={3}
-                  sx={{
-                    borderRadius: 2,
-                    overflow: 'hidden',
-                    border: `2px solid ${camera.color}`,
-                    aspectRatio: '16/9', // 16:9 비율 설정
-                    width: '100%'
-                  }}
-                >
-                  <CameraStream
-                    cameraId={camera.id}
-                    title={translate(`카메라 ${camera.id}`, `Camera ${camera.id}`, language)}
-                    height="100%"
-                    language={language}
-                    hideRefreshButton={true}
-                    hideControls={true}
-                  />
-                </Paper>
-              ))}
-            </Box>
+            {showCameraOverlay && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: 16,
+                  right: 16,
+                  width: '16%', // 25%에서 18%로 너비 감소
+                  zIndex: 1000,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1 // 카메라 간격도 줄임
+                }}
+              >
+                {cameras.slice(0, 3).map((camera) => (
+                  <Paper
+                    key={camera.id}
+                    elevation={3}
+                    sx={{
+                      borderRadius: 2,
+                      overflow: 'hidden',
+                      border: `2px solid ${camera.color}`,
+                      aspectRatio: '16/9', // 16:9 비율 설정
+                      width: '100%'
+                    }}
+                  >
+                    <CameraStream
+                      cameraId={camera.id}
+                      title={translate(`카메라 ${camera.id}`, `Camera ${camera.id}`, language)}
+                      height="100%"
+                      language={language}
+                      hideRefreshButton={true}
+                      hideControls={true}
+                    />
+                  </Paper>
+                ))}
+              </Box>
+            )}
           </Box>
         </Box>
 

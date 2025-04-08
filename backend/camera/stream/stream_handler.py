@@ -53,7 +53,7 @@ class StreamHandler:
         
         # 객체 감지 스케줄링 관련 변수
         self.last_detection_time = 0
-        self.detection_interval = 1
+        self.detection_interval = 0.1
         
         # 마지막 감지 결과
         self.last_detection_result = None

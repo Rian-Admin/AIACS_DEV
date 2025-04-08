@@ -363,3 +363,62 @@ class ObjectDetector:
             # 오류 발생 시 원래 모델 유지
             print(f"새 모델 로드 중 오류 발생: {e}")
             raise
+
+    def detect(self, frame, camera_id=None):
+        """단일 프레임에서 객체 감지 수행 (최적화 버전)"""
+        try:
+            if frame is None:
+                return None
+            
+            # 가벼운 추론 모드 적용 (제한 없이)
+            results = self.model(frame, 
+                             conf=self.conf_threshold,  # 신뢰도 임계값
+                             iou=0.45,    # IOU 임계값
+                             classes=None,  # 모든 클래스 감지
+                             agnostic=False,        # 클래스 구분 사용
+                             verbose=False)         # 상세 출력 끄기
+            
+            # 결과 캐싱
+            if camera_id is not None:
+                with self.result_lock:
+                    self.result_dict[camera_id] = results[0]  # 첫 번째 결과만 저장
+            
+            return results[0]  # 첫 번째 결과만 반환
+        
+        except Exception as e:
+            import traceback
+            print(f"감지 오류: {e}")
+            print(traceback.format_exc())
+            return None
+
+    def _detection_thread(self):
+        """객체 감지 스레드 (최적화 버전)"""
+        try:
+            while self.is_running:
+                # 처리할 프레임이 있는지 확인
+                with self.result_lock:
+                    if self.detection_queue.empty():
+                        time.sleep(0.001)  # 매우 짧은 대기 (1ms)
+                        continue
+                    
+                    # 큐에서 가장 오래된 항목을 제거하고 가장 최근 항목만 유지
+                    while self.detection_queue.qsize() > 1:
+                        # 오래된 프레임 버리기 (지연 감소)
+                        self.detection_queue.get()
+                    
+                    # 최신 프레임만 처리
+                    frame_data = self.detection_queue.get()
+                
+                if frame_data:
+                    camera_id, frame, timestamp = frame_data
+                    
+                    # 감지 수행 (최적화된 설정으로)
+                    self.detect(frame, camera_id)
+                
+                # 너무 빠른 연속 처리로 인한 CPU 부하 방지
+                time.sleep(0.001)  # 매우 짧은 대기 (1ms)
+        
+        except Exception as e:
+            import traceback
+            print(f"감지 스레드 오류: {e}")
+            print(traceback.format_exc())

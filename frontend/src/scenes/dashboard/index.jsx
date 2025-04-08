@@ -26,7 +26,7 @@ const Dashboard = ({ language }) => {
   const [weatherLoading, setWeatherLoading] = useState(true);
   const [collisionRisks, setCollisionRisks] = useState([]);
   const [birdActivityData, setBirdActivityData] = useState([]);
-  const [mapCenter, setMapCenter] = useState([35.192892, 126.221627]); // 소각시도 좌표
+  const [mapCenter, setMapCenter] = useState([37.243100, 126.652140]); // 소각시도 좌표
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraStatus, setCameraStatus] = useState({
     1: { online: true, error: false },
@@ -59,15 +59,15 @@ const Dashboard = ({ language }) => {
         // 실제로는 API 호출로 대체
         setTimeout(() => {
           setWeatherData({
-            location: '전남 영광군 소각시도',
+            location: '경기 화성시 고포리',
             timestamp: new Date().toISOString(),
             current: {
-              temperature: 12.5,
-              feels_like: 10.2,
+              temperature: 13.5,
+              feels_like: 11.2,
               humidity: 65,
               wind_speed: 4.2,
               wind_direction: 'NE',
-              precipitation: 0,
+              precipitation: 1,
               weather_condition: 'clear',
               pressure: 1012,
               visibility: 10,
@@ -207,7 +207,7 @@ const Dashboard = ({ language }) => {
         </Grid>
         
         {/* 중앙 패널 */}
-        <Grid item xs={12} md={8} lg={6} xl={7}>
+        <Grid item xs={12} md={8} lg={9} xl={9.5}>
           <MapView
             mapCenter={mapCenter}
             mapRef={mapRef}
@@ -218,25 +218,23 @@ const Dashboard = ({ language }) => {
           />
         </Grid>
         
-        {/* 오른쪽 패널 */}
+        {/* 오른쪽 패널 - 주석 처리됨
         <Grid item xs={12} lg={3} xl={2.5} sx={{ display: { xs: 'none', lg: 'block' } }}>
           <Grid container spacing={2} direction="column">
-            {/* 시스템 상태 */}
             <Grid item>
               <SystemStatus language={language} />
             </Grid>
             
-            {/* 조류 감지 통계 */}
             <Grid item>
               <BirdStatistics language={language} />
             </Grid>
             
-            {/* 이벤트 기록 */}
             <Grid item>
               <RecentEvents language={language} />
             </Grid>
           </Grid>
         </Grid>
+        */}
       </Grid>
 
       {/* 카메라 스트림 모달 */}

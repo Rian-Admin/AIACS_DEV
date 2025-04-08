@@ -64,14 +64,6 @@ class BirdController:
         self.sound_files = [
             "Sound 0", 
             "Sound 1", 
-            "Sound 2", 
-            "Sound 3", 
-            "Sound 4",
-            "Sound 5", 
-            "Sound 6", 
-            "Sound 7", 
-            "Sound 8", 
-            "Sound 9"
         ]
         
         # 자동 연결 시도
@@ -247,3 +239,28 @@ class BirdController:
             'current_sound_index': self.current_sound_index if self.is_playing else None,
             'is_repeat_mode': self.is_repeat_mode
         }
+        
+    def process_detection(self, box, frame_width, frame_height):
+        """객체 감지 결과를 처리하여 조류퇴치기 제어
+        box: [x1, y1, x2, y2] 좌표 리스트
+        """
+        if not self.connected:
+            logger.warning("조류퇴치기가 연결되지 않았습니다. 감지 결과 처리를 건너뜁니다.")
+            return
+            
+        try:
+            # 스피커 발사 비활성화 (주석 처리)
+            # if not self.is_playing:
+            #     logger.info("객체 감지됨: 조류퇴치 사운드 재생")
+            #     self.play_sound(0, repeat=False)
+            
+            # 로그만 남기고 실제 스피커는 작동하지 않음
+            logger.info("객체 감지됨: 스피커 발사 비활성화 상태")
+        except Exception as e:
+            logger.error(f"조류퇴치기 제어 오류: {e}")
+            
+    def reset_detection(self):
+        """감지 상태 초기화 - 필요시 음원 재생 중지"""
+        # 아무것도 감지되지 않을 때의 처리 로직
+        # 현재는 별도 조치를 취하지 않음 (재생 중인 사운드는 유지)
+        pass

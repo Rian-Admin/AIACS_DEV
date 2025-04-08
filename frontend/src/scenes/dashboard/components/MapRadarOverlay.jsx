@@ -17,6 +17,7 @@ const MapRadarOverlay = ({ language }) => {
   const [radarData, setRadarData] = useState({ plots: [], tracks: [] });
   const [initialViewSet, setInitialViewSet] = useState(false); // 초기 뷰 설정 여부 확인
   const isUpdatingRef = useRef(false); // 업데이트 플래그
+  const alarmPauseTimerRef = useRef(null); // 타이머 참조 추가
   
   // localStorage에서 경보 설정 가져오기
   const getSavedAlarmDistance = () => {
@@ -32,11 +33,12 @@ const MapRadarOverlay = ({ language }) => {
   const [alarmDistance, setAlarmDistance] = useState(getSavedAlarmDistance());
   const [isAlarmEnabled, setIsAlarmEnabled] = useState(getSavedAlarmEnabled());
   const [isAlarmTriggered, setIsAlarmTriggered] = useState(false);
+  const [alarmPausedUntil, setAlarmPausedUntil] = useState(null); // 경보 일시 중지 시간 추가
   
   // 레이더 위치 설정 (소각시도 좌표로 변경)
   const radarPosition = {
-    latitude: 35.192892, // 위도
-    longitude: 126.221627 // 경도
+    latitude: 37.243100, // 위도
+    longitude: 126.652140 // 경도
   };
   
   // 레이더 최대 범위 (미터 단위)
@@ -64,9 +66,6 @@ const MapRadarOverlay = ({ language }) => {
   const resetAlarm = () => {
     // 경보 상태 초기화
     setIsAlarmTriggered(false);
-    // 경보 기능 자체를 비활성화하는 코드 제거
-    // setIsAlarmEnabled(false);
-    // localStorage.setItem('radarAlarmEnabled', 'false');
     
     // 경보음 중지
     if (alarmSoundRef.current) {
@@ -75,6 +74,35 @@ const MapRadarOverlay = ({ language }) => {
     }
     // 맵 경보 메시지 제거
     removeMapAlertMessage();
+    
+    // 1분 동안 경보 일시 중지
+    const pauseUntil = new Date();
+    pauseUntil.setMinutes(pauseUntil.getMinutes() + 1);
+    setAlarmPausedUntil(pauseUntil);
+    
+    // 기존 타이머가 있으면 제거
+    if (alarmPauseTimerRef.current) {
+      clearTimeout(alarmPauseTimerRef.current);
+    }
+    
+    // 1분 후에 경보 일시 중지 해제
+    alarmPauseTimerRef.current = setTimeout(() => {
+      setAlarmPausedUntil(null);
+      console.log('경보 일시 중지 해제됨');
+    }, 60000); // 1분 = 60000ms
+  };
+  
+  // 경보 즉시 재개 함수 추가
+  const resumeAlarm = () => {
+    // 타이머 취소
+    if (alarmPauseTimerRef.current) {
+      clearTimeout(alarmPauseTimerRef.current);
+      alarmPauseTimerRef.current = null;
+    }
+    
+    // 일시 중지 상태 해제
+    setAlarmPausedUntil(null);
+    console.log('경보 감지 수동으로 재개됨');
   };
   
   // 다른 컴포넌트에서 경보 설정 변경 시 이벤트 리스너
@@ -128,6 +156,8 @@ const MapRadarOverlay = ({ language }) => {
     const sliderValue = document.getElementById('alarm-distance-value');
     const alarmStatus = document.getElementById('alarm-status');
     const alarmResetButton = document.getElementById('alarm-reset-button');
+    const alarmPauseStatus = document.getElementById('alarm-pause-status');
+    const alarmResumeButton = document.getElementById('alarm-resume-button');
     
     if (toggleButton && toggleStatus && slider && sliderValue) {
       // 경보 활성화 버튼 업데이트
@@ -135,8 +165,13 @@ const MapRadarOverlay = ({ language }) => {
       toggleButton.style.backgroundColor = isAlarmEnabled ? '#ff9800' : '#4CAF50';
       
       // 상태 레이블 업데이트
-      toggleStatus.textContent = isAlarmEnabled ? '감지 중' : '감지 정지';
-      toggleStatus.style.color = isAlarmEnabled ? 'lime' : 'white';
+      if (alarmPausedUntil && new Date() < alarmPausedUntil) {
+        toggleStatus.textContent = '일시 중지됨';
+        toggleStatus.style.color = '#ffcc00';
+      } else {
+        toggleStatus.textContent = isAlarmEnabled ? '감지 중' : '감지 정지';
+        toggleStatus.style.color = isAlarmEnabled ? 'lime' : 'white';
+      }
       
       // 슬라이더 값 업데이트
       slider.value = alarmDistance.toString();
@@ -146,6 +181,26 @@ const MapRadarOverlay = ({ language }) => {
     // 경보 상태 업데이트
     if (alarmStatus) {
       alarmStatus.style.display = isAlarmTriggered ? 'inline' : 'none';
+    }
+    
+    // 일시 중지 상태 업데이트
+    if (alarmPauseStatus) {
+      if (alarmPausedUntil && new Date() < alarmPausedUntil) {
+        const remainingSecs = Math.ceil((alarmPausedUntil - new Date()) / 1000);
+        alarmPauseStatus.textContent = `경보 일시 중지: ${remainingSecs}초 남음`;
+        alarmPauseStatus.style.display = 'block';
+      } else {
+        alarmPauseStatus.style.display = 'none';
+      }
+    }
+    
+    // 경보 재개 버튼 업데이트
+    if (alarmResumeButton) {
+      if (alarmPausedUntil && new Date() < alarmPausedUntil) {
+        alarmResumeButton.style.display = 'block';
+      } else {
+        alarmResumeButton.style.display = 'none';
+      }
     }
     
     // 알람 컨트롤 컨테이너
@@ -258,6 +313,40 @@ const MapRadarOverlay = ({ language }) => {
         
         toggleContainer.appendChild(toggleLabel);
         toggleContainer.appendChild(toggleStatus);
+        
+        // 경보 일시 중지 상태 표시 추가
+        const alarmPauseStatus = document.createElement('div');
+        alarmPauseStatus.id = 'alarm-pause-status';
+        alarmPauseStatus.style.width = '100%';
+        alarmPauseStatus.style.marginBottom = '10px';
+        alarmPauseStatus.style.padding = '5px';
+        alarmPauseStatus.style.backgroundColor = 'rgba(255, 204, 0, 0.7)';
+        alarmPauseStatus.style.color = 'black';
+        alarmPauseStatus.style.borderRadius = '3px';
+        alarmPauseStatus.style.textAlign = 'center';
+        alarmPauseStatus.style.fontWeight = 'bold';
+        alarmPauseStatus.style.display = 'none';
+        container.appendChild(alarmPauseStatus);
+        
+        // 경보 즉시 재개 버튼 추가
+        const alarmResumeButton = document.createElement('button');
+        alarmResumeButton.id = 'alarm-resume-button';
+        alarmResumeButton.textContent = '경보 즉시 재개';
+        alarmResumeButton.style.padding = '5px';
+        alarmResumeButton.style.backgroundColor = '#4CAF50'; // 초록색
+        alarmResumeButton.style.color = 'white';
+        alarmResumeButton.style.border = 'none';
+        alarmResumeButton.style.borderRadius = '3px';
+        alarmResumeButton.style.cursor = 'pointer';
+        alarmResumeButton.style.width = '100%';
+        alarmResumeButton.style.marginBottom = '10px';
+        alarmResumeButton.style.display = 'none'; // 기본적으로 숨김
+        
+        alarmResumeButton.addEventListener('click', function() {
+          resumeAlarm();
+        });
+        
+        container.appendChild(alarmResumeButton);
         
         // 경보 상태 표시
         const alarmStatus = document.createElement('span');
@@ -573,28 +662,105 @@ const MapRadarOverlay = ({ language }) => {
       setInitialViewSet(true);
     }
     
-    // 맵 줌/이동 이벤트에 리스너 등록 (디바운싱 적용)
-    const handleMapChange = debounce(() => {
-      if (!isUpdatingRef.current) {
-        updateOverlay();
-      }
-    }, 50); // 50ms 디바운스
+    // 맵 이동 중 상태 플래그
+    let isMoving = false;
     
-    map.on('zoomend', handleMapChange);
-    map.on('moveend', handleMapChange);
+    // 맵 이동 시작 이벤트
+    const handleMoveStart = () => {
+      isMoving = true;
+    };
+    
+    // 맵 이동 중 이벤트
+    const handleMove = debounce(() => {
+      if (!isUpdatingRef.current && isMoving) {
+        // 이동 중에는 경계만 업데이트하고 이미지는 유지
+        updateOverlayBoundsOnly();
+      }
+    }, 10); // 빠른 반응을 위해 10ms로 설정
+    
+    // 맵 이동/줌 종료 이벤트
+    const handleMoveEnd = debounce(() => {
+      isMoving = false;
+      if (!isUpdatingRef.current) {
+        // 이동이 완료된 후에만 전체 오버레이 업데이트
+        updateOverlay(true);
+      }
+    }, 200); // 이동이 완전히 끝난 후 업데이트하도록 200ms로 설정
+    
+    // 이벤트 리스너 등록
+    map.on('movestart', handleMoveStart);
+    map.on('move', handleMove);
+    map.on('moveend', handleMoveEnd);
+    map.on('zoomstart', handleMoveStart);
+    map.on('zoom', handleMove);
+    map.on('zoomend', handleMoveEnd);
     
     // 첫 번째 오버레이 그리기
     drawRadarOverlay();
     
     return () => {
-      map.off('zoomend', handleMapChange);
-      map.off('moveend', handleMapChange);
+      // 이벤트 리스너 제거
+      map.off('movestart', handleMoveStart);
+      map.off('move', handleMove);
+      map.off('moveend', handleMoveEnd);
+      map.off('zoomstart', handleMoveStart);
+      map.off('zoom', handleMove);
+      map.off('zoomend', handleMoveEnd);
+      
       if (overlayRef.current) {
         map.removeLayer(overlayRef.current);
         overlayRef.current = null;
       }
     };
   }, [map, initialViewSet]); // 맵 객체가 변경될 때만 실행
+  
+  // 경계만 업데이트하는 함수 (맵 이동 중 호출)
+  const updateOverlayBoundsOnly = () => {
+    if (!map || !overlayRef.current) return;
+    
+    const radarLatLng = L.latLng(radarPosition.latitude, radarPosition.longitude);
+    const bounds = calculateRadarBounds(radarLatLng, maxRadarRange, map);
+    
+    // 이미지는 유지하고 경계만 업데이트
+    overlayRef.current.setBounds(bounds);
+  };
+  
+  // 오버레이 업데이트 함수
+  const updateOverlay = (fullUpdate = false) => {
+    if (!map || !overlayRef.current || !canvasRef.current) return;
+    
+    // 업데이트 플래그 설정
+    isUpdatingRef.current = true;
+    
+    const radarLatLng = L.latLng(radarPosition.latitude, radarPosition.longitude);
+    const bounds = calculateRadarBounds(radarLatLng, maxRadarRange, map);
+    
+    // 경계 먼저 업데이트
+    overlayRef.current.setBounds(bounds);
+    
+    // 전체 업데이트가 필요한 경우에만 이미지도 업데이트
+    if (fullUpdate) {
+      // 버퍼 캔버스에 그리기
+      drawRadarOverlay();
+      
+      // 새 이미지 URL 생성
+      const newUrl = canvasRef.current.toDataURL();
+      
+      // 이미지 미리 로드
+      const img = new Image();
+      img.onload = () => {
+        // 새 이미지 적용
+        overlayRef.current.setUrl(newUrl);
+        
+        // 업데이트 플래그 해제
+        isUpdatingRef.current = false;
+      };
+      img.src = newUrl;
+    } else {
+      // 경계만 업데이트한 경우 바로 플래그 해제
+      isUpdatingRef.current = false;
+    }
+  };
   
   // 디바운스 함수 구현
   const debounce = (func, delay) => {
@@ -608,7 +774,24 @@ const MapRadarOverlay = ({ language }) => {
       }, delay);
     };
   };
-    // 레이더 데이터 변경 시 오버레이만 업데이트
+  
+  // 일시 중지 상태 정기 업데이트
+  useEffect(() => {
+    const updateInterval = setInterval(() => {
+      if (alarmPausedUntil) {
+        updateAlarmControlState();
+        
+        // 일시 중지 시간이 지났는지 확인
+        if (new Date() > alarmPausedUntil) {
+          setAlarmPausedUntil(null);
+        }
+      }
+    }, 1000); // 1초마다 업데이트
+    
+    return () => clearInterval(updateInterval);
+  }, [alarmPausedUntil]);
+  
+  // 레이더 데이터 변경 시 오버레이만 업데이트
   useEffect(() => {
     if (!map || !canvasRef.current || !overlayRef.current) return;
     
@@ -665,8 +848,11 @@ const MapRadarOverlay = ({ language }) => {
       
       const totalObjectsInsideAlarmRadius = tracksInsideAlarmRadius + plotsInsideAlarmRadius;
       
+      // 경보가 일시 중지되었는지 확인
+      const isAlarmPaused = alarmPausedUntil && new Date() < alarmPausedUntil;
+      
       // 경보 상태 업데이트
-      if (totalObjectsInsideAlarmRadius > 0) {
+      if (totalObjectsInsideAlarmRadius > 0 && !isAlarmPaused) {
         if (!isAlarmTriggered) {
           // 처음 경보가 발생할 때
           setIsAlarmTriggered(true);
@@ -702,7 +888,7 @@ const MapRadarOverlay = ({ language }) => {
       // 맵 경보 메시지 제거
       removeMapAlertMessage();
     }
-  }, [radarData, isAlarmEnabled, alarmDistance]);
+  }, [radarData, isAlarmEnabled, alarmDistance, alarmPausedUntil]);
   
   // 맵 중앙에 큰 경보 메시지 표시 함수
   const showMapAlertMessage = (map, trackCount, plotCount) => {
@@ -713,42 +899,42 @@ const MapRadarOverlay = ({ language }) => {
     const alertDiv = document.createElement('div');
     alertDiv.id = 'map-alarm-message';
     alertDiv.style.position = 'absolute';
-    alertDiv.style.top = '50%';
-    alertDiv.style.left = '50%';
-    alertDiv.style.transform = 'translate(-50%, -50%)';
+    alertDiv.style.top = '10px'; // 화면 상단으로 위치 이동
+    alertDiv.style.left = '50%'; // 좌우 중앙
+    alertDiv.style.transform = 'translateX(-50%)'; // 좌우 중앙 정렬
     alertDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.8)'; // 불투명도 증가
     alertDiv.style.color = 'white';
-    alertDiv.style.padding = '20px 30px'; // 패딩 증가
+    alertDiv.style.padding = '12px 25px'; // 패딩 조정
     alertDiv.style.borderRadius = '10px';
-    alertDiv.style.fontSize = '28px'; // 글씨 크기 증가
+    alertDiv.style.fontSize = '22px'; // 글씨 크기 조정
     alertDiv.style.fontWeight = 'bold';
     alertDiv.style.zIndex = '1000';
     alertDiv.style.textAlign = 'center';
-    alertDiv.style.boxShadow = '0 0 30px rgba(255, 0, 0, 0.9)'; // 그림자 강화
-    alertDiv.style.animation = 'pop-in 0.5s, pulse 1.5s infinite';
+    alertDiv.style.boxShadow = '0 0 20px rgba(255, 0, 0, 0.9)'; // 그림자 강화
+    alertDiv.style.animation = 'pop-in-top 0.5s, pulse-top 1.5s infinite';
     alertDiv.style.textShadow = '2px 2px 4px rgba(0,0,0,0.7)';
     alertDiv.style.border = '2px solid white'; // 테두리 추가
     
     // 트랙과 플롯의 수에 따라 다른 메시지 표시
     const totalCount = trackCount + plotCount;
     if (totalCount > 0) {
-      alertDiv.innerHTML = `⚠️ 경보 발생! ⚠️<br>조류 ${totalCount}마리 거리 내 접근`;
+      alertDiv.innerHTML = `⚠️ 경보 발생! 조류 ${totalCount}마리 접근`;
     } else {
-      alertDiv.innerHTML = `⚠️ 경보 발생! ⚠️`;
+      alertDiv.innerHTML = `⚠️ 경보 발생!`;
     }
     
     // 애니메이션을 위한 스타일 추가
     const style = document.createElement('style');
     style.textContent = `
-      @keyframes pop-in {
-        0% { transform: translate(-50%, -50%) scale(0); }
-        70% { transform: translate(-50%, -50%) scale(1.1); }
-        100% { transform: translate(-50%, -50%) scale(1); }
+      @keyframes pop-in-top {
+        0% { transform: translateX(-50%) scale(0); opacity: 0; }
+        70% { transform: translateX(-50%) scale(1.1); opacity: 1; }
+        100% { transform: translateX(-50%) scale(1); opacity: 1; }
       }
-      @keyframes pulse {
-        0% { transform: translate(-50%, -50%) scale(1); }
-        50% { transform: translate(-50%, -50%) scale(1.05); }
-        100% { transform: translate(-50%, -50%) scale(1); }
+      @keyframes pulse-top {
+        0% { transform: translateX(-50%) scale(1); }
+        50% { transform: translateX(-50%) scale(1.05); }
+        100% { transform: translateX(-50%) scale(1); }
       }
     `;
     document.head.appendChild(style);
@@ -792,35 +978,6 @@ const MapRadarOverlay = ({ language }) => {
       L.latLng(southLat, westLng), // 남서
       L.latLng(northLat, eastLng)  // 북동
     );
-  };
-  
-  // 오버레이 업데이트 함수
-  const updateOverlay = () => {
-    if (!map || !overlayRef.current || !canvasRef.current) return;
-    
-    // 업데이트 플래그 설정
-    isUpdatingRef.current = true;
-    
-    const radarLatLng = L.latLng(radarPosition.latitude, radarPosition.longitude);
-    const bounds = calculateRadarBounds(radarLatLng, maxRadarRange, map);
-    
-    // 버퍼 캔버스에 그리기
-    drawRadarOverlay();
-    
-    // 새 이미지 URL 생성
-    const newUrl = canvasRef.current.toDataURL();
-    
-    // 이미지 미리 로드
-    const img = new Image();
-    img.onload = () => {
-      // 오버레이 경계 업데이트 및 새 이미지 적용
-      overlayRef.current.setBounds(bounds);
-      overlayRef.current.setUrl(newUrl);
-      
-      // 업데이트 플래그 해제
-      isUpdatingRef.current = false;
-    };
-    img.src = newUrl;
   };
   
   // 캔버스에 레이더 데이터 그리기 함수
@@ -1200,6 +1357,21 @@ const MapRadarOverlay = ({ language }) => {
     
     return { range, azimuth };
   };
+  
+  // 컴포넌트 언마운트 시 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (alarmSoundRef.current) {
+        alarmSoundRef.current.pause();
+        alarmSoundRef.current = null;
+      }
+      
+      // 타이머 정리
+      if (alarmPauseTimerRef.current) {
+        clearTimeout(alarmPauseTimerRef.current);
+      }
+    };
+  }, []);
   
   return (
     <Box 

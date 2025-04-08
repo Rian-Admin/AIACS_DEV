@@ -13,6 +13,18 @@ const CombinedRadarDisplay = ({
   saveSettings = true, // 설정 저장 여부 (기본값 true)
   hideAlertSettings = false // 경보 설정 UI 표시 여부
 }) => {
+  // 마운트 상태 추적을 위한 ref 추가
+  const isMountedRef = useRef(true);
+
+  // 컴포넌트 마운트/언마운트 감지
+  useEffect(() => {
+    isMountedRef.current = true;
+    
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // localStorage에서 저장된 값을 가져오거나 props의 기본값 사용
   const getSavedAlarmDistance = () => {
     if (!saveSettings) return defaultAlarmDistance;
@@ -130,8 +142,8 @@ const CombinedRadarDisplay = ({
   useEffect(() => {
     console.log(`CombinedRadarDisplay - 데이터 업데이트: 플롯(${plotData?.length || 0}개), 트랙(${trackData?.length || 0}개)`);
     
-    if (!canvasRef.current || !legendCanvasRef.current) {
-      console.log('캔버스 요소가 없습니다');
+    if (!isMountedRef.current || !canvasRef.current || !legendCanvasRef.current) {
+      console.log('캔버스 요소가 없거나 컴포넌트가 언마운트됨');
       return;
     }
     
@@ -541,12 +553,16 @@ const CombinedRadarDisplay = ({
           
           // 새 위치를 이력에 추가 (최대 10개 위치만 저장)
           // 이전과 현재 위치가 동일하면 추가하지 않음 (중복 방지)
-          const lastPos = newTrackHistory[id][0];
+          const lastPos = newTrackHistory[id].length > 0 ? 
+                         newTrackHistory[id][newTrackHistory[id].length - 1] : null;
+          
           if (!lastPos || (lastPos[0] !== canvasX || lastPos[1] !== canvasY)) {
-            newTrackHistory[id].unshift([canvasX, canvasY]);
-            // 최대 10개 위치만 유지
+            // unshift 대신 push 사용하여 시간순으로 데이터 추가 (오래된 데이터 -> 최신 데이터)
+            newTrackHistory[id].push([canvasX, canvasY, Date.now()]); // 타임스탬프도 함께 저장
+            
+            // 최대 10개 위치만 유지 (오래된 데이터 제거)
             if (newTrackHistory[id].length > 10) {
-              newTrackHistory[id] = newTrackHistory[id].slice(0, 10);
+              newTrackHistory[id] = newTrackHistory[id].slice(-10);
             }
           }
           
@@ -1080,11 +1096,11 @@ const CombinedRadarDisplay = ({
     // 경로 그리기
     ctx.beginPath();
     
-    // 현재 위치에서 시작
-    const [currentX, currentY] = positions[0];
-    ctx.moveTo(currentX, currentY);
+    // 시간순으로 정렬된 데이터의 첫 위치(가장 오래된 데이터)에서 시작
+    const [startX, startY] = positions[0];
+    ctx.moveTo(startX, startY);
     
-    // 나머지 경로 포인트로 선 그리기
+    // 순차적으로 경로 포인트로 선 그리기 (오래된 데이터 -> 최신 데이터)
     for (let i = 1; i < positions.length; i++) {
       const [x, y] = positions[i];
       // 좌표 유효성 검사
@@ -1097,7 +1113,7 @@ const CombinedRadarDisplay = ({
     ctx.setLineDash([]); // 점선 스타일 초기화
     
     // 경로 포인트에 작은 점 표시 (시간에 따른 위치 표시)
-    for (let i = 1; i < positions.length; i++) {
+    for (let i = 0; i < positions.length; i++) {
       const [x, y] = positions[i];
       // 좌표 유효성 검사
       if (x !== undefined && y !== undefined && !isNaN(x) && !isNaN(y)) {
