@@ -664,7 +664,7 @@ class RadarProtocol:
                 "tv_sec": 1457804,          # 메시지가 생성된 Unix Time (초)
                 "tv_usec": 0                # 메시지가 생성된 Unix Time (마이크로초)
             },
-            "PlotSendFlag": 1,              # 플롯 데이터 전송여부, 0: 전송안함, 1: 전송
+            "PlotSendFlag": 0,              # 플롯 데이터 전송여부, 0: 전송안함, 1: 전송
             "PlotType": 3,                  # 플롯데이터 형태, 1: LLA, 2: ENU, 3: Polar
             "TrackSendFlag": 1,             # 트랙 데이터 전송여부, 0: 전송안함, 1: 전송
             "TrackType": 3                  # 트랙데이터 형태, 1: LLA, 2: ENU, 3: Polar
