@@ -525,22 +525,7 @@ class RFCoreConnector:
         """현재 저장된 상태 데이터를 반환합니다."""
         with self.lock:
             return self.state
-
-    def _emulator_data_generator(self):
-        """에뮬레이터 모드에서 데이터 생성"""
-        # 이 메서드는 삭제됩니다
-        pass
         
-    def _create_radar_state(self):
-        """에뮬레이터 모드에서 레이더 상태 메시지 생성"""
-        # 이 메서드는 삭제됩니다
-        pass
-        
-    def _create_command_response(self, command_id):
-        """에뮬레이터 모드에서 명령에 대한 응답 생성"""
-        # 이 메서드는 삭제됩니다
-        pass
-
 # 레이더 시스템 래퍼 클래스 (기존 유지)
 class RFCoreWrapper:
     _instance = None
