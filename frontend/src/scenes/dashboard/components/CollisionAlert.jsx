@@ -1,6 +1,6 @@
-import { Box, Typography, Paper, List, ListItem, ListItemText, ListItemAvatar, Avatar } from '@mui/material';
+import React from 'react';
+import { Box, Typography, Paper } from '@mui/material';
 import { translate, translateSpecies } from '../../../utils/i18n';
-import { Warning as WarningIcon } from '@mui/icons-material';
 
 const CollisionAlert = ({ collisionRisks, language }) => {
   // 위험 레벨에 따른 색상 반환
@@ -14,7 +14,7 @@ const CollisionAlert = ({ collisionRisks, language }) => {
         return '#fbc02d';
       case 'low':
       default:
-        return '#388e3c';
+        return '#4caf50';
     }
   };
 
@@ -22,77 +22,135 @@ const CollisionAlert = ({ collisionRisks, language }) => {
     <Paper 
       elevation={0} 
       sx={{ 
-        p: 2, 
+        p: 1.5, 
         borderRadius: 2, 
-        backgroundColor: '#0a1929',
-        border: '1px solid #1e3a5a',
+        backgroundColor: '#050A18',
+        border: '1px solid rgba(30, 58, 90, 0.3)',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column'
       }}
     >
-      <Typography variant="h6" fontWeight="bold" sx={{ mb: 1 }}>
+      <Typography 
+        variant="subtitle2" 
+        fontWeight="bold" 
+        sx={{ 
+          mb: 1, 
+          color: 'white',
+          textShadow: '0 0 5px rgba(255,255,255,0.5)'
+        }}
+      >
         {translate('충돌 위험 알림', 'Collision Risk Alerts', language)}
       </Typography>
       
-      {collisionRisks.length > 0 ? (
-        <List sx={{ p: 0 }}>
-          {collisionRisks.map((risk) => (
-            <ListItem 
-              key={risk.id} 
-              sx={{ 
-                px: 0, 
-                py: 1, 
-                borderLeft: `4px solid ${getRiskColor(risk.level)}`,
-                pl: 1,
-                backgroundColor: `${getRiskColor(risk.level)}10`,
-                mb: 1,
-                borderRadius: '0 4px 4px 0'
-              }}
-            >
-              <ListItemAvatar sx={{ minWidth: 40 }}>
-                <Avatar 
+      <Box sx={{ flex: 1, overflow: 'auto', pb: 0.5 }}>
+        {collisionRisks.length > 0 ? (
+          <Box>
+            {collisionRisks.map((risk) => {
+              const riskColor = getRiskColor(risk.level);
+              return (
+                <Box 
+                  key={risk.id} 
                   sx={{ 
-                    width: 32, 
-                    height: 32,
-                    bgcolor: `${getRiskColor(risk.level)}40`,
-                    color: getRiskColor(risk.level)
+                    mb: 0.7, 
+                    position: 'relative',
+                    display: 'flex',
+                    alignItems: 'center',
+                    p: 1,
+                    backgroundColor: 'rgba(0, 25, 50, 0.4)',
+                    borderRadius: 1,
+                    border: '1px solid rgba(30, 58, 90, 0.2)',
+                    borderLeft: `3px solid ${riskColor}`,
+                    boxShadow: `0 0 10px rgba(0, 150, 255, 0.1), inset 0 0 5px rgba(0, 150, 255, 0.05)`,
+                    '&:hover': {
+                      backgroundColor: 'rgba(0, 30, 60, 0.5)',
+                    }
                   }}
                 >
-                  <WarningIcon fontSize="small" />
-                </Avatar>
-              </ListItemAvatar>
-              <ListItemText 
-                primary={
-                  <Typography variant="body2" fontWeight="bold">
-                    {risk.location} - {translateSpecies(risk.species, language)}
+                  {/* 위험도 표시 원형 아이콘 */}
+                  <Box
+                    sx={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: '50%',
+                      backgroundColor: `rgba(${risk.level === 'critical' ? '211, 47, 47' : risk.level === 'high' ? '245, 124, 0' : risk.level === 'medium' ? '251, 192, 45' : '76, 175, 80'}, 0.15)`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: `0 0 8px ${riskColor}80`,
+                      mr: 1.5
+                    }}
+                  >
+                    <Typography 
+                      sx={{ 
+                        color: riskColor, 
+                        fontWeight: 'bold',
+                        fontSize: '1.5rem',
+                        textShadow: `0 0 10px ${riskColor}`
+                      }}
+                    >
+                      A
+                    </Typography>
+                  </Box>
+                  
+                  {/* 정보 영역 */}
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        color: '#A9EAFF',
+                        fontWeight: 'bold',
+                        textShadow: '0 0 5px rgba(169,234,255,0.5)',
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      {risk.location} - {translateSpecies(risk.species, language)}
+                    </Typography>
+                  </Box>
+                  
+                  {/* 시간 표시 */}
+                  <Typography 
+                    variant="caption" 
+                    sx={{ 
+                      color: 'rgba(169,234,255,0.7)',
+                      textShadow: '0 0 3px rgba(169,234,255,0.4)',
+                      fontSize: '0.75rem'
+                    }}
+                  >
+                    {new Date(risk.timestamp).toLocaleTimeString(undefined, {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                      hour12: true
+                    })}
                   </Typography>
-                }
-                secondary={
-                  <Typography variant="caption" color="text.secondary">
-                    {translate('거리', 'Distance', language)}: {risk.distance}m | 
-                    {translate('속도', 'Speed', language)}: {risk.speed}km/h
-                  </Typography>
-                }
-              />
-              <Typography variant="caption" color="text.secondary">
-                {new Date(risk.timestamp).toLocaleTimeString()}
-              </Typography>
-            </ListItem>
-          ))}
-        </List>
-      ) : (
-        <Box 
-          sx={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            py: 2
-          }}
-        >
-          <Typography variant="body2" color="text.secondary" align="center">
-            {translate('현재 충돌 위험 없음', 'No collision risks detected', language)}
-          </Typography>
-        </Box>
-      )}
+                </Box>
+              );
+            })}
+          </Box>
+        ) : (
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              py: 2,
+              height: '100%'
+            }}
+          >
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                color: 'rgba(169,234,255,0.7)',
+                textShadow: '0 0 3px rgba(169,234,255,0.4)'
+              }}
+            >
+              {translate('현재 충돌 위험 없음', 'No collision risks detected', language)}
+            </Typography>
+          </Box>
+        )}
+      </Box>
     </Paper>
   );
 };

@@ -19,13 +19,36 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import axios from 'axios';
 
-// 신뢰도 레벨에 따른 색상 반환
-const getConfidenceColor = (confidence) => {
-  if (confidence >= 90) return '#4caf50';
-  if (confidence >= 75) return '#8bc34a';
-  if (confidence >= 60) return '#ffeb3b';
-  if (confidence >= 45) return '#ff9800';
-  return '#f44336';
+/**
+ * ISO 형식 날짜 문자열을 한국어 형식으로 변환
+ * @param {string} isoString - ISO 형식 날짜 문자열 (예: 2025-04-15T04:09:50.981099+00:00)
+ * @returns {string} 한국어 형식 날짜 문자열 (예: 2025년 04월 15일 16:03:46)
+ */
+const formatDateTimeKorean = (isoString) => {
+  if (!isoString) return '';
+  
+  try {
+    const date = new Date(isoString);
+    
+    // 유효한 날짜인지 확인
+    if (isNaN(date.getTime())) {
+      return isoString;
+    }
+    
+    // 년, 월, 일, 시, 분, 초 추출
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
+    // 한국어 형식으로 포맷팅
+    return `${year}년 ${month}월 ${day}일 ${hours}:${minutes}:${seconds}`;
+  } catch (error) {
+    console.error('날짜 변환 오류:', error);
+    return isoString;
+  }
 };
 
 /**
@@ -50,7 +73,7 @@ const ExpandableRow = ({ row }) => {
     
     setLoading(true);
     try {
-      const response = await axios.get(`/api/detection-bb-info/${row.id}/`);
+      const response = await axios.get(`/api/detection/bb-info/${row.id}/`);
       setBbData(response.data.bb_info || []);
       setOpen(true);
     } catch (error) {
@@ -80,7 +103,7 @@ const ExpandableRow = ({ row }) => {
           </IconButton>
         </TableCell>
         <TableCell>{row.id}</TableCell>
-        <TableCell>{row.timestamp}</TableCell>
+        <TableCell>{formatDateTimeKorean(row.timestamp)}</TableCell>
         <TableCell>{row.species || '다양한 조류'}</TableCell>
         <TableCell align="center">
           <Chip
@@ -91,25 +114,9 @@ const ExpandableRow = ({ row }) => {
           />
         </TableCell>
         <TableCell align="center">{row.camera_id}</TableCell>
-        <TableCell>
-          <Box 
-            component="span" 
-            sx={{ 
-              px: 1, 
-              py: 0.5, 
-              borderRadius: 1, 
-              fontSize: '0.8rem',
-              bgcolor: row.riskLevel === '고위험' ? 'rgba(244, 67, 54, 0.1)' : 'rgba(76, 175, 80, 0.1)',
-              color: row.riskLevel === '고위험' ? '#f44336' : '#4caf50',
-              border: `1px solid ${row.riskLevel === '고위험' ? '#f44336' : '#4caf50'}`
-            }}
-          >
-            {row.riskLevel}
-          </Box>
-        </TableCell>
       </TableRow>
       <TableRow>
-        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
+        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={6}>
           <Collapse in={open} timeout="auto" unmountOnExit>
             <Box sx={{ margin: 2 }}>
               <Typography variant="h6" gutterBottom component="div">
@@ -193,19 +200,35 @@ const DetectionTable = ({ detections }) => {
     setPage(0);
   };
 
+  // 시간 기준 내림차순으로 정렬된 데이터 (최신 데이터가 먼저 표시)
+  const sortedData = React.useMemo(() => {
+    // 원본 배열을 변경하지 않기 위해 복사본 사용
+    return [...detections].sort((a, b) => {
+      // 시간 문자열 비교 (내림차순)
+      return new Date(b.timestamp) - new Date(a.timestamp);
+    });
+  }, [detections]);
+  
   // 현재 페이지 데이터
-  const currentPageData = detections.slice(
+  const currentPageData = sortedData.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
   );
 
   return (
-    <Paper sx={{ p: 2, mb: 2, bgcolor: '#0a1929', border: '1px solid #1e3a5a' }}>
-      <Typography variant="subtitle1" color="primary" sx={{ mb: 2 }}>
+    <Paper sx={{ 
+      p: 2, 
+      bgcolor: '#0a1929', 
+      border: '1px solid #1e3a5a',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column'
+    }}>
+      <Typography variant="subtitle1" color="primary" sx={{ mb: 1 }}>
         최근 탐지 기록 ({detections.length}개)
       </Typography>
       
-      <TableContainer sx={{ mb: 1, maxHeight: 400 }}>
+      <TableContainer sx={{ mb: 1, flex: 1, overflow: 'auto' }}>
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow sx={{ '& th': { fontWeight: 'bold', color: 'text.secondary' } }}>
@@ -215,7 +238,6 @@ const DetectionTable = ({ detections }) => {
               <TableCell>종류</TableCell>
               <TableCell align="center">객체 수</TableCell>
               <TableCell align="center">카메라 ID</TableCell>
-              <TableCell>위험도</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, Grid, useTheme, IconButton, Paper, Typography, Divider } from '@mui/material';
 import { ChevronLeft, ChevronRight } from '@mui/icons-material';
 import useAppStore from '../../store/useAppStore';
+import axios from 'axios';
 
 // 분리된 컴포넌트 가져오기
 import WeatherWidget from './components/WeatherWidget';
@@ -40,12 +41,12 @@ const Dashboard = ({ language }) => {
     3: { online: true, error: false }
   });
   
-  // 더미 데이터 - 일일 카메라별 누적 현황
-  const [dailyCameraStats] = useState({
-    total: 73412,
-    camera1: 15892,
-    camera2: 32450,
-    camera3: 25070
+  // 일일 카메라별 누적 현황 데이터
+  const [dailyCameraStats, setDailyCameraStats] = useState({
+    total: 0,
+    camera1: 0,
+    camera2: 0,
+    camera3: 0
   });
   
   // 더미 데이터 - 일일 종별 누적 현황
@@ -145,7 +146,10 @@ const Dashboard = ({ language }) => {
       const risks = [
         { id: 1, level: 'low', location: 'YW-01', distance: 750, species: 'crow', speed: 15, timestamp: new Date() },
         { id: 2, level: 'medium', location: 'YW-03', distance: 320, species: 'eagle', speed: 22, timestamp: new Date() },
-        { id: 3, level: 'high', location: 'YW-05', distance: 180, species: 'hawk', speed: 30, timestamp: new Date() }
+        { id: 3, level: 'high', location: 'YW-05', distance: 180, species: 'hawk', speed: 30, timestamp: new Date() },
+        { id: 4, level: 'critical', location: 'YW-02', distance: 120, species: 'falcon', speed: 35, timestamp: new Date(Date.now() - 60000) },
+        { id: 5, level: 'high', location: 'YW-04', distance: 210, species: 'seagull', speed: 25, timestamp: new Date(Date.now() - 120000) },
+        { id: 6, level: 'medium', location: 'YW-06', distance: 350, species: 'duck', speed: 18, timestamp: new Date(Date.now() - 180000) }
       ];
       
       setCollisionRisks(risks);
@@ -171,6 +175,103 @@ const Dashboard = ({ language }) => {
     
     return () => clearInterval(intervalId);
   }, [setHighestRiskLevel]);
+
+  // 일일 조류 인식 누적 현황 데이터 가져오기
+  useEffect(() => {
+    const fetchDailyCameraStats = async () => {
+      try {
+        // 백엔드 API에서 카메라별 일일 데이터 가져오기
+        const API_BASE_URL = 'http://localhost:8000';
+        const today = new Date().toISOString().split('T')[0]; // 오늘 날짜 (YYYY-MM-DD)
+        
+        // 바운딩 박스 데이터를 직접 가져옵니다 (감지가 아닌 실제 바운딩 박스)
+        const response = await axios.get(`${API_BASE_URL}/api/bird-analysis/data/`, {
+          params: {
+            date_from: today,
+            date_to: today
+          }
+        });
+        
+        if (response.data && response.data.bb_data) {
+          // 바운딩 박스 데이터에서 카메라별 개체수 계산
+          const bbData = response.data.bb_data;
+          console.log(`바운딩 박스 데이터 개수: ${bbData.length}`);
+          
+          // 카메라별 바운딩 박스 카운트 (각 바운딩 박스는 새 한 마리)
+          const camera1Count = bbData.filter(bb => bb.camera_id === 1).length;
+          const camera2Count = bbData.filter(bb => bb.camera_id === 2).length;
+          const camera3Count = bbData.filter(bb => bb.camera_id === 3).length;
+          const totalCount = camera1Count + camera2Count + camera3Count;
+          
+          // 상태 업데이트
+          setDailyCameraStats({
+            total: totalCount,
+            camera1: camera1Count,
+            camera2: camera2Count,
+            camera3: camera3Count
+          });
+          
+          console.log('일일 카메라별 바운딩 박스 데이터 로드 완료:', { totalCount, camera1Count, camera2Count, camera3Count });
+        } else {
+          console.warn('API 응답에 바운딩 박스 데이터가 없습니다');
+          
+          // 기존 방식을 대체 방법으로 사용 (감지 데이터 기반)
+          const detectionsResponse = await axios.get(`${API_BASE_URL}/api/detections/filtered/`, {
+            params: {
+              date_from: today,
+              date_to: today
+            }
+          });
+          
+          if (detectionsResponse.data && detectionsResponse.data.detections) {
+            const detections = detectionsResponse.data.detections;
+            console.log(`감지 데이터 개수: ${detections.length}`);
+            
+            // 각 감지에는 여러 개의 바운딩 박스가 있을 수 있음 (bb_count)
+            const camera1Count = detections
+              .filter(d => d.camera_id === 1)
+              .reduce((sum, d) => sum + (d.bb_count || 0), 0);
+              
+            const camera2Count = detections
+              .filter(d => d.camera_id === 2)
+              .reduce((sum, d) => sum + (d.bb_count || 0), 0);
+              
+            const camera3Count = detections
+              .filter(d => d.camera_id === 3)
+              .reduce((sum, d) => sum + (d.bb_count || 0), 0);
+              
+            const totalCount = camera1Count + camera2Count + camera3Count;
+            
+            setDailyCameraStats({
+              total: totalCount,
+              camera1: camera1Count,
+              camera2: camera2Count,
+              camera3: camera3Count
+            });
+            
+            console.log('일일 카메라별 감지 데이터 로드 완료 (대체 방법):', { totalCount, camera1Count, camera2Count, camera3Count });
+          }
+        }
+      } catch (error) {
+        console.error('일일 카메라별 데이터 로드 오류:', error);
+        // 오류 시 기존 더미 데이터 유지 또는 기본값 설정
+        setDailyCameraStats({
+          total: 73412,
+          camera1: 15892,
+          camera2: 32450,
+          camera3: 25070
+        });
+      }
+    };
+    
+    // 데이터 로드
+    fetchDailyCameraStats();
+    
+    // 5분마다 자동 갱신
+    const intervalId = setInterval(fetchDailyCameraStats, 5 * 60 * 1000);
+    
+    return () => clearInterval(intervalId);
+  }, []);
 
   // 지도 시야각 영역 생성 함수
   const createViewField = (position, direction, angle, distance) => {
@@ -264,8 +365,8 @@ const Dashboard = ({ language }) => {
     backgroundColor: 'rgba(10, 25, 41, 0.95)',
     borderRadius: 2,
     border: '1px solid rgba(30, 58, 90, 0.8)',
-    p: 2,
-    mb: 2.5,
+    p: 0,
+    mb: 1,
     boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)'
   };
 
@@ -276,41 +377,52 @@ const Dashboard = ({ language }) => {
         sx={{ 
           width: 336,
           display: showLeftPanel ? 'block' : 'none',
-          overflow: 'auto',
+          overflow: 'hidden',
           pr: 2,
           backgroundColor: 'rgba(10, 25, 41, 0.95)',
           borderRight: '1px solid rgba(30, 58, 90, 0.5)',
           boxShadow: '2px 0 8px rgba(0, 0, 0, 0.2)',
           transition: 'all 0.3s ease-in-out',
-          zIndex: 10
+          zIndex: 10,
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column'
         }}
       >
-        <Grid container spacing={2.5} direction="column" sx={{ p: 1.5 }}>
+        <Box 
+          sx={{ 
+            p: 1.5, 
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between'
+          }}
+        >
           {/* 날씨 정보 위젯 */}
-          <Grid item>
+          <Paper elevation={0} sx={{...statsWidgetStyle, height: 'calc(33% - 20px)'}}>
             <WeatherWidget 
               weatherData={weatherData}
               weatherLoading={weatherLoading}
               language={language}
             />
-          </Grid>
+          </Paper>
           
           {/* 충돌 위험 알림 */}
-          <Grid item>
+          <Paper elevation={0} sx={{...statsWidgetStyle, height: 'calc(33% - 20px)'}}>
             <CollisionAlert 
               collisionRisks={collisionRisks}
               language={language}
             />
-          </Grid>
+          </Paper>
           
           {/* 조류 근접 현황 */}
-          <Grid item>
+          <Paper elevation={0} sx={{...statsWidgetStyle, height: 'calc(33% - 20px)'}}>
             <BirdProximityStatus 
               birdActivityData={birdActivityData}
               language={language}
             />
-          </Grid>
-        </Grid>
+          </Paper>
+        </Box>
       </Box>
       
       {/* 왼쪽 패널 토글 버튼 - 세로 경계에 위치 */}
@@ -443,24 +555,23 @@ const Dashboard = ({ language }) => {
         sx={{ 
           width: 300,
           display: showRightPanel ? 'block' : 'none',
-          overflow: 'auto',
+          overflow: 'hidden',
           pl: 2,
           pr: 1.5,
-          py: 1.5,
+          py: 1,
           backgroundColor: 'rgba(10, 25, 41, 0.95)',
           borderLeft: '1px solid rgba(30, 58, 90, 0.5)',
           boxShadow: '-2px 0 8px rgba(0, 0, 0, 0.2)',
           transition: 'all 0.3s ease-in-out',
-          zIndex: 10
+          zIndex: 10,
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
         }}
       >
         {/* 일일 누적 현황 위젯 */}
-        <Paper elevation={0} sx={statsWidgetStyle}>
-          <Typography variant="subtitle1" color="lightblue" gutterBottom fontWeight="bold">
-            조류 인식 일일 누적 현황
-          </Typography>
-          <Divider sx={{ borderColor: 'rgba(150, 200, 255, 0.15)', mb: 2 }} />
-          
+        <Paper elevation={0} sx={{...statsWidgetStyle, height: 'calc(33% - 20px)'}}>
           <DailyStatsChart 
             data={[
               { label: '전체', value: dailyCameraStats.total, color: '#2196f3' },
@@ -472,24 +583,14 @@ const Dashboard = ({ language }) => {
         </Paper>
         
         {/* 일일 종별 누적 현황 위젯 */}
-        <Paper elevation={0} sx={statsWidgetStyle}>
-          <Typography variant="subtitle1" color="lightblue" gutterBottom fontWeight="bold">
-            조류 종별 일일 누적 현황
-          </Typography>
-          <Divider sx={{ borderColor: 'rgba(150, 200, 255, 0.15)', mb: 2 }} />
-          
+        <Paper elevation={0} sx={{...statsWidgetStyle, height: 'calc(33% - 20px)'}}>
           <SpeciesStatsChart 
             data={dailySpeciesStats}
           />
         </Paper>
         
         {/* 방위별 출현율 위젯 */}
-        <Paper elevation={0} sx={statsWidgetStyle}>
-          <Typography variant="subtitle1" color="lightblue" gutterBottom fontWeight="bold">
-            방위별 출현율
-          </Typography>
-          <Divider sx={{ borderColor: 'rgba(150, 200, 255, 0.15)', mb: 2 }} />
-          
+        <Paper elevation={0} sx={{...statsWidgetStyle, height: 'calc(33% - 20px)'}}>
           <RadarDirectionChart 
             data={directionStats}
           />

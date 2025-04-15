@@ -54,31 +54,13 @@ const Analytics = ({ language }) => {
       if (!Array.isArray(camerasData)) {
         console.warn('카메라 데이터가 예상된 형식이 아닙니다:', camerasData);
         camerasData = [];
-        
-        // 개발 단계에서 임시 데이터 사용
-        if (process.env.NODE_ENV === 'development') {
-          camerasData = [
-            { camera_id: 1, wind_turbine_id: '터빈-A', status: '활성' },
-            { camera_id: 2, wind_turbine_id: '터빈-B', status: '활성' },
-            { camera_id: 3, wind_turbine_id: '터빈-C', status: '비활성' }
-          ];
-        }
       }
       
       setCameras(camerasData);
     } catch (error) {
       console.error('카메라 정보 로드 오류:', error);
-      console.log('백엔드 API 연결 실패, 임시 데이터 사용 중');
-      
-      // 오류 발생 시 개발 환경에서 임시 데이터 사용
-      if (process.env.NODE_ENV === 'development') {
-        const dummyCameras = [
-          { camera_id: 1, wind_turbine_id: '터빈-A', status: '활성' },
-          { camera_id: 2, wind_turbine_id: '터빈-B', status: '활성' },
-          { camera_id: 3, wind_turbine_id: '터빈-C', status: '비활성' }
-        ];
-        setCameras(dummyCameras);
-      }
+      console.log('백엔드 API 연결 실패');
+      setCameras([]); // 빈 배열로 설정
     }
   };
 
@@ -164,39 +146,13 @@ const Analytics = ({ language }) => {
       if (!Array.isArray(birdClassesData)) {
         console.warn('조류 클래스 데이터가 예상된 형식이 아닙니다:', birdClassesData);
         birdClassesData = [];
-        
-        // 개발 단계에서 임시 데이터 사용
-        if (process.env.NODE_ENV === 'development') {
-          birdClassesData = [
-            { class_id: 1, bird_name_ko: '검은머리물떼새', scientific_name: 'Haematopus ostralegus' },
-            { class_id: 2, bird_name_ko: '알락꼬리마도요', scientific_name: 'Numenius madagascariensis' },
-            { class_id: 3, bird_name_ko: '흰이마기러기', scientific_name: 'Anser albifrons' },
-            { class_id: 4, bird_name_ko: '마도요', scientific_name: 'Numenius sp.' },
-            { class_id: 5, bird_name_ko: '뿔제비갈매기', scientific_name: 'Thalasseus bergii' },
-            { class_id: 6, bird_name_ko: '재갈매기', scientific_name: 'Larus argentatus' },
-            { class_id: 7, bird_name_ko: '모래도요', scientific_name: 'Calidris alba' }
-          ];
-        }
       }
       
       setBirdClasses(birdClassesData);
     } catch (error) {
       console.error('조류 클래스 정보 로드 오류:', error);
-      console.log('백엔드 API 연결 실패, 임시 데이터 사용 중');
-      
-      // 오류 발생 시 개발 환경에서 임시 데이터 사용
-      if (process.env.NODE_ENV === 'development') {
-        const dummyBirdClasses = [
-          { class_id: 1, bird_name_ko: '검은머리물떼새', scientific_name: 'Haematopus ostralegus' },
-          { class_id: 2, bird_name_ko: '알락꼬리마도요', scientific_name: 'Numenius madagascariensis' },
-          { class_id: 3, bird_name_ko: '흰이마기러기', scientific_name: 'Anser albifrons' },
-          { class_id: 4, bird_name_ko: '마도요', scientific_name: 'Numenius sp.' },
-          { class_id: 5, bird_name_ko: '뿔제비갈매기', scientific_name: 'Thalasseus bergii' },
-          { class_id: 6, bird_name_ko: '재갈매기', scientific_name: 'Larus argentatus' },
-          { class_id: 7, bird_name_ko: '모래도요', scientific_name: 'Calidris alba' }
-        ];
-        setBirdClasses(dummyBirdClasses);
-      }
+      console.log('백엔드 API 연결 실패');
+      setBirdClasses([]); // 빈 배열로 설정
     }
   };
 
@@ -205,7 +161,10 @@ const Analytics = ({ language }) => {
     setIsLoading(true);
     try {
       // 필터 파라미터 준비
-      const params = {};
+      const params = {
+        get_all: 'true',  // 조류 분석 데이터 API용
+        per_page: 10000   // 감지 기록 API용 - 페이지 크기를 매우 크게 설정하여 모든 데이터 가져오기
+      };
       
       // 시간 범위에 따른 날짜 형식화
       if (filters.timeRange === 'custom') {
@@ -243,15 +202,34 @@ const Analytics = ({ language }) => {
       
       console.log('백엔드 API 호출 파라미터:', params);
       
-      // 실제 백엔드 API 호출 (경로 수정)
-      const [detectionsResponse, bbResponse] = await Promise.all([
-        axios.get('/api/detections/filtered/', { params }),
-        axios.get('/api/bird-analysis/data/', { params })
-      ]);
+      // URL이 백엔드 서버의 실제 URL을 가리키도록 수정
+      const API_BASE_URL = 'http://localhost:8000';
+      
+      // 실제 백엔드 API 호출
+      let detectionsResponse, bbResponse;
+      
+      try {
+        [detectionsResponse, bbResponse] = await Promise.all([
+          axios.get(`${API_BASE_URL}/api/detections/filtered/`, { params }),
+          axios.get(`${API_BASE_URL}/api/bird-analysis/data/`, { params })
+        ]);
+        
+        console.log('감지 데이터 응답:', detectionsResponse.data);
+        console.log('바운딩 박스 데이터 응답:', bbResponse.data);
+        
+        if (!detectionsResponse.data || !bbResponse.data) {
+          throw new Error('API 응답에 데이터가 없습니다.');
+        }
+      } catch (apiError) {
+        console.error('API 호출 오류:', apiError);
+        throw apiError; // 상위 catch 블록으로 전달
+      }
       
       // API 응답 처리
       const detections = detectionsResponse.data.detections || [];
       const bbData = bbResponse.data.bb_data || [];
+      
+      console.log(`API에서 가져온 감지 수: ${detections.length}, 바운딩 박스 수: ${bbData.length}`);
       
       // 조류 종류별 분포 계산
       const speciesDistribution = {};
@@ -267,7 +245,7 @@ const Analytics = ({ language }) => {
       const distributionArray = Object.entries(speciesDistribution).map(([name, count]) => ({
         name,
         count
-      }));
+      })).sort((a, b) => b.count - a.count); // 개수 기준 내림차순 정렬
       
       // 바운딩 박스 통계 계산
       const bbSizes = bbData.map(bb => {
@@ -295,17 +273,40 @@ const Analytics = ({ language }) => {
       
       // 결과 데이터 구성
       const result = {
-        totalDetections: detections.length,
-        recentDetections: detections.map(detection => ({
-          id: detection.detection_id,
-          timestamp: detection.detection_time,
-          species: '', // 대표 종 추가 필요
-          confidence: 0, // 신뢰도 데이터 추가 필요
-          distance: 0, // 거리 데이터 추가 필요
-          objectCount: detection.bb_count,
-          riskLevel: detection.bb_count > 5 ? '고위험' : '저위험',
-          camera_id: detection.camera_id
-        })),
+        totalDetections: detections.length, // 실제 API에서 받은 감지 수 사용
+        recentDetections: detections.map(detection => {
+          // 해당 감지의 바운딩 박스 찾기
+          const relatedBBs = bbData.filter(bb => bb.detection_id === detection.detection_id);
+          
+          // 가장 많은 종류 찾기
+          const speciesCounts = {};
+          relatedBBs.forEach(bb => {
+            if (!speciesCounts[bb.class_name]) {
+              speciesCounts[bb.class_name] = 0;
+            }
+            speciesCounts[bb.class_name]++;
+          });
+          
+          let dominantSpecies = '';
+          let maxCount = 0;
+          for (const [species, count] of Object.entries(speciesCounts)) {
+            if (count > maxCount) {
+              maxCount = count;
+              dominantSpecies = species;
+            }
+          }
+          
+          return {
+            id: detection.detection_id,
+            timestamp: detection.detection_time,
+            species: dominantSpecies,
+            confidence: 95, // 임시
+            distance: 100, // 임시
+            objectCount: detection.bb_count,
+            riskLevel: detection.bb_count > 3 ? '고위험' : '저위험',
+            camera_id: detection.camera_id
+          };
+        }),
         speciesDistribution: distributionArray,
         statistics: {
           count: bbData.length,
@@ -316,42 +317,16 @@ const Analytics = ({ language }) => {
         }
       };
       
+      // 디버깅용 로그 출력
+      console.log("최종 데이터:", result);
+      console.log("총 탐지 횟수(totalDetections):", result.totalDetections);
+      console.log("조류 개체 수(statistics.count):", result.statistics.count);
+      
       setDetectionData(result);
     } catch (error) {
       console.error('데이터 로드 오류:', error);
-      console.log('백엔드 API 연결 실패, 임시 데이터 사용 중');
-      
-      // 개발 단계에서 임시 더미 데이터 사용
-      if (process.env.NODE_ENV === 'development') {
-        // 더미 데이터 생성
-        const dummyData = {
-          totalDetections: 120,
-          recentDetections: Array(15).fill(0).map((_, i) => ({
-            id: 1000 + i,
-            timestamp: new Date(Date.now() - i * 3600000).toISOString(),
-            species: ['검은머리물떼새', '알락꼬리마도요', '흰이마기러기', '마도요'][i % 4],
-            confidence: 80 + Math.floor(Math.random() * 15),
-            distance: 50 + Math.floor(Math.random() * 150),
-            objectCount: 1 + Math.floor(Math.random() * 5),
-            riskLevel: Math.random() > 0.7 ? '고위험' : '저위험',
-            camera_id: 1 + (i % 3)
-          })),
-          speciesDistribution: [
-            { name: '검은머리물떼새', count: 45 },
-            { name: '알락꼬리마도요', count: 32 },
-            { name: '흰이마기러기', count: 28 },
-            { name: '마도요', count: 15 }
-          ],
-          statistics: {
-            count: 120,
-            avgSize: 8.5,
-            avgHeight: 6.3,
-            maxSize: 35.2,
-            maxHeight: 16.5
-          }
-        };
-        setDetectionData(dummyData);
-      }
+      alert('백엔드 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.');
+      setDetectionData(null); // 데이터를 null로 설정하여 UI에 오류 메시지 표시
     } finally {
       setIsLoading(false);
     }
@@ -433,16 +408,32 @@ const Analytics = ({ language }) => {
           {/* 통계 카드 섹션 */}
           <StatCards data={detectionData} />
 
-          {/* 최근 탐지 목록 */}
-          <DetectionTable detections={detectionData.recentDetections} />
-
-          {/* 차트 섹션 */}
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+          {/* 3개 컴포넌트를 가로로 배열 */}
+          <Box sx={{ 
+            display: 'grid', 
+            gridTemplateColumns: { 
+              xs: '1fr', 
+              md: '1fr 1fr', 
+              lg: '1fr 1.5fr 1.5fr' 
+            },
+            gridAutoRows: 'minmax(420px, auto)',
+            gap: 2,
+            mb: 2
+          }}>
             {/* 종류별 분포 차트 */}
-            <DistributionChart distribution={detectionData.speciesDistribution} />
+            <Box>
+              <DistributionChart distribution={detectionData.speciesDistribution} />
+            </Box>
 
             {/* 시간대별 활동 패턴 차트 */}
-            <ActivityChart />
+            <Box>
+              <ActivityChart />
+            </Box>
+
+            {/* 최근 탐지 목록 */}
+            <Box>
+              <DetectionTable detections={detectionData.recentDetections} />
+            </Box>
           </Box>
         </>
       )}

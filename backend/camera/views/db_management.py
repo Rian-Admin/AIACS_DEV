@@ -19,11 +19,15 @@ import zipfile
 import io
 import tempfile
 import os
+import pytz  # pytz 추가
 
 # 로그 비활성화
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 logger.propagate = False
+
+# 한국 시간대 정의
+KST = pytz.timezone('Asia/Seoul')
 
 def db_management_view(request):
     """데이터베이스 관리 페이지"""
@@ -276,6 +280,11 @@ def get_bird_analysis_data(request):
         date_to = request.GET.get('date_to')
         bird_class = request.GET.get('bird_class')
         
+        # 페이지네이션 매개변수 추출
+        page = int(request.GET.get('page', 1))
+        per_page = int(request.GET.get('per_page', 1000))  # 기본값을 1000으로 설정 (모든 데이터 가져오기)
+        get_all = request.GET.get('get_all', 'false').lower() == 'true'  # 'get_all' 파라미터가 true이면 모든 데이터 반환
+        
         # 기본 쿼리셋 생성
         bb_query = BBInfo.objects.select_related('detection_info_id', 'class_id', 'detection_info_id__camera_id')
         
@@ -299,8 +308,20 @@ def get_bird_analysis_data(request):
         if bird_class:
             bb_query = bb_query.filter(class_id=bird_class)
         
-        # 최대 100개 항목으로 제한
-        bb_info = bb_query.order_by('-detection_info_id__detection_time')[:100]
+        # 전체 레코드 수 계산
+        total_records = bb_query.count()
+        total_pages = max(1, (total_records + per_page - 1) // per_page)
+        
+        # 정렬 적용
+        bb_query = bb_query.order_by('-detection_info_id__detection_time')
+        
+        # 페이지네이션 적용 (get_all이 true인 경우 모든 데이터 반환)
+        if not get_all:
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            bb_info = bb_query[start_idx:end_idx]
+        else:
+            bb_info = bb_query.all()  # 모든 데이터 반환
         
         # 응답을 위한 데이터 구성
         bb_data = []
@@ -318,9 +339,14 @@ def get_bird_analysis_data(request):
                 'camera_id': bb.detection_info_id.camera_id.camera_id if bb.detection_info_id.camera_id else None
             })
         
+        # 페이지네이션 정보 포함
         return JsonResponse({
             'status': 'success',
-            'bb_data': bb_data
+            'bb_data': bb_data,
+            'total_records': total_records,
+            'total_pages': total_pages,
+            'current_page': page,
+            'per_page': per_page
         })
         
     except Exception as e:
@@ -329,6 +355,44 @@ def get_bird_analysis_data(request):
             'status': 'error',
             'message': str(e)
         }, status=500)
+
+def export_cameras_csv(request):
+    """카메라 정보를 CSV로 내보내기 - 모든 필드 포함 (견고성 개선)"""
+    try:
+        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+        response['Content-Disposition'] = 'attachment; filename="cameras.csv"'
+        
+        # BOM 추가
+        response.write('\ufeff')
+        
+        writer = csv.writer(response, quoting=csv.QUOTE_ALL)  # 모든 필드 인용 처리
+        writer.writerow(['카메라 ID', '풍력 터빈 ID', '시야각', '설치 방향', '설치 높이', 'RTSP 주소', '상태', '감지 건수'])
+        
+        for camera in Camera.objects.order_by('camera_id').all():
+            try:
+                # 이 카메라로 감지된 건수 계산
+                detection_count = DetectionInfo.objects.filter(camera_id=camera.camera_id).count()
+                
+                writer.writerow([
+                    str(camera.camera_id) if camera.camera_id else '',
+                    str(camera.wind_turbine_id) if camera.wind_turbine_id else '',
+                    str(camera.viewing_angle) if camera.viewing_angle is not None else '',
+                    str(camera.installation_direction) if camera.installation_direction else '',
+                    str(camera.installation_height) if camera.installation_height is not None else '',
+                    str(camera.rtsp_address) if camera.rtsp_address else '',
+                    str(camera.status) if camera.status else '',
+                    str(detection_count)
+                ])
+            except Exception as e:
+                # 행 처리 중 오류 발생시 건너뛰기
+                logger.error(f"카메라 CSV 행 처리 오류: {str(e)}")
+                continue
+        
+        return response
+    except Exception as e:
+        # 전체 함수 예외 처리
+        logger.error(f"카메라 정보 내보내기 오류: {str(e)}")
+        return JsonResponse({'status': 'error', 'message': f'카메라 정보 내보내기 오류: {str(e)}'}, status=500)
 
 def export_database_csv(request):
     """전체 데이터베이스를 ZIP 파일로 내보내기 (방식 개선)"""
@@ -349,9 +413,22 @@ def export_database_csv(request):
                 # 감지 ID 순서로 정렬 - 배치 처리로 메모리 효율성 높이기
                 for detection in DetectionInfo.objects.select_related('camera_id').order_by('detection_id').iterator():
                     try:
+                        # 시간을 KST로 변환
+                        detection_time = ''
+                        if detection.detection_time:
+                            # 시간대 정보가 없다면 UTC로 가정하고 KST로 변환
+                            if detection.detection_time.tzinfo is None:
+                                aware_time = pytz.utc.localize(detection.detection_time)
+                            else:
+                                aware_time = detection.detection_time
+                            
+                            # KST로 변환
+                            kst_time = aware_time.astimezone(KST)
+                            detection_time = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+                            
                         writer.writerow([
                             str(detection.detection_id) if detection.detection_id else '',
-                            detection.detection_time.strftime('%Y-%m-%d %H:%M:%S') if detection.detection_time else '',
+                            detection_time,
                             str(detection.bb_count) if detection.bb_count is not None else '0',
                             str(detection.camera_id.camera_id) if detection.camera_id else '',
                             str(detection.camera_id.wind_turbine_id) if detection.camera_id and detection.camera_id.wind_turbine_id else '',
@@ -379,9 +456,16 @@ def export_database_csv(request):
                         height = bb.bb_bottom - bb.bb_top if bb.bb_bottom is not None and bb.bb_top is not None else 0
                         area = width * height
                         
+                        # 시간을 KST로 변환
                         detection_time = ''
                         if bb.detection_info_id and bb.detection_info_id.detection_time:
-                            detection_time = bb.detection_info_id.detection_time.strftime('%Y-%m-%d %H:%M:%S')
+                            dt = bb.detection_info_id.detection_time
+                            if dt.tzinfo is None:
+                                aware_time = pytz.utc.localize(dt)
+                            else:
+                                aware_time = dt
+                            kst_time = aware_time.astimezone(KST)
+                            detection_time = kst_time.strftime('%Y-%m-%d %H:%M:%S')
                         
                         protection_status = ''
                         if bb.class_id and bb.class_id.protection_status_code:
@@ -415,50 +499,6 @@ def export_database_csv(request):
                         logger.error(f"Bounding Box CSV 행 처리 오류: {str(e)}")
                         continue
             
-            # 3. 카메라 정보 CSV 파일 생성
-            cameras_file = os.path.join(temp_dir, 'cameras.csv')
-            with open(cameras_file, 'w', newline='', encoding='utf-8-sig') as f:
-                writer = csv.writer(f, quoting=csv.QUOTE_ALL)
-                writer.writerow(['카메라 ID', '풍력 터빈 ID', '시야각', '설치 방향', '설치 높이', 'RTSP 주소', '상태'])
-                
-                for camera in Camera.objects.order_by('camera_id').all():
-                    try:
-                        writer.writerow([
-                            str(camera.camera_id) if camera.camera_id else '',
-                            str(camera.wind_turbine_id) if camera.wind_turbine_id else '',
-                            str(camera.viewing_angle) if camera.viewing_angle is not None else '',
-                            str(camera.installation_direction) if camera.installation_direction else '',
-                            str(camera.installation_height) if camera.installation_height is not None else '',
-                            str(camera.rtsp_address) if camera.rtsp_address else '',
-                            str(camera.status) if camera.status else ''
-                        ])
-                    except Exception as e:
-                        logger.error(f"Camera CSV 행 처리 오류: {str(e)}")
-                        continue
-            
-            # 4. 조류 클래스 정보 CSV 파일 생성
-            birds_file = os.path.join(temp_dir, 'bird_classes.csv')
-            with open(birds_file, 'w', newline='', encoding='utf-8-sig') as f:
-                writer = csv.writer(f, quoting=csv.QUOTE_ALL)
-                writer.writerow(['ID', '조류 코드', '한글명', '학명', '보호 상태 코드', '보호 상태 설명', '이동성 코드', '이동성 유형', '위험도'])
-                
-                for bird in BirdClass.objects.select_related('protection_status_code', 'migration_code').order_by('class_id').all():
-                    try:
-                        writer.writerow([
-                            str(bird.class_id) if bird.class_id else '',
-                            str(bird.bird_type_code) if bird.bird_type_code else '',
-                            str(bird.bird_name_ko) if bird.bird_name_ko else '',
-                            str(bird.scientific_name) if bird.scientific_name else '',
-                            str(bird.protection_status_code.code) if bird.protection_status_code and bird.protection_status_code.code else '',
-                            str(bird.protection_status_code.description) if bird.protection_status_code and bird.protection_status_code.description else '',
-                            str(bird.migration_code.code) if bird.migration_code and bird.migration_code.code else '',
-                            str(bird.migration_code.description) if bird.migration_code and bird.migration_code.description else '',
-                            str(bird.risk_score) if bird.risk_score is not None else ''
-                        ])
-                    except Exception as e:
-                        logger.error(f"Bird CSV 행 처리 오류: {str(e)}")
-                        continue
-            
             # 5. 퇴치 기록 CSV 파일 생성
             deterrents_file = os.path.join(temp_dir, 'deterrents.csv')
             with open(deterrents_file, 'w', newline='', encoding='utf-8-sig') as f:
@@ -471,9 +511,49 @@ def export_database_csv(request):
                 
                 for deterrent in DeterrentRecord.objects.select_related('detection_id', 'cannon_id', 'speaker_id', 'sound_id', 'detection_id__camera_id').order_by('detection_id__detection_id', 'deterrent_id').iterator():
                     try:
+                        # 시간값들을 KST로 변환
                         detection_time = ''
                         if deterrent.detection_id and deterrent.detection_id.detection_time:
-                            detection_time = deterrent.detection_id.detection_time.strftime('%Y-%m-%d %H:%M:%S')
+                            dt = deterrent.detection_id.detection_time
+                            if dt.tzinfo is None:
+                                aware_time = pytz.utc.localize(dt)
+                            else:
+                                aware_time = dt
+                            kst_time = aware_time.astimezone(KST)
+                            detection_time = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+                        
+                        # 퇴치 시작 시간 변환
+                        deterrent_start_time = ''
+                        if deterrent.deterrent_start_time:
+                            dt = deterrent.deterrent_start_time
+                            if dt.tzinfo is None:
+                                aware_time = pytz.utc.localize(dt)
+                            else:
+                                aware_time = dt
+                            kst_time = aware_time.astimezone(KST)
+                            deterrent_start_time = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+                        
+                        # 퇴치 종료 시간 변환
+                        deterrent_end_time = ''
+                        if deterrent.deterrent_end_time:
+                            dt = deterrent.deterrent_end_time
+                            if dt.tzinfo is None:
+                                aware_time = pytz.utc.localize(dt)
+                            else:
+                                aware_time = dt
+                            kst_time = aware_time.astimezone(KST)
+                            deterrent_end_time = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+                        
+                        # 발사 시간 변환
+                        cannon_firing_time = ''
+                        if deterrent.cannon_firing_time:
+                            dt = deterrent.cannon_firing_time
+                            if dt.tzinfo is None:
+                                aware_time = pytz.utc.localize(dt)
+                            else:
+                                aware_time = dt
+                            kst_time = aware_time.astimezone(KST)
+                            cannon_firing_time = kst_time.strftime('%Y-%m-%d %H:%M:%S')
                         
                         writer.writerow([
                             str(deterrent.deterrent_id) if deterrent.deterrent_id else '',
@@ -482,12 +562,12 @@ def export_database_csv(request):
                             str(deterrent.detection_id.camera_id.camera_id) if deterrent.detection_id and deterrent.detection_id.camera_id else '',
                             str(deterrent.detection_distance) if deterrent.detection_distance is not None else '',
                             str(deterrent.object_count) if deterrent.object_count is not None else '',
-                            deterrent.deterrent_start_time.strftime('%Y-%m-%d %H:%M:%S') if deterrent.deterrent_start_time else '',
-                            deterrent.deterrent_end_time.strftime('%Y-%m-%d %H:%M:%S') if deterrent.deterrent_end_time else '',
+                            deterrent_start_time,
+                            deterrent_end_time,
                             str(deterrent.cannon_id.cannon_id) if deterrent.cannon_id else '',
                             str(deterrent.cannon_id.wind_turbine_id) if deterrent.cannon_id and deterrent.cannon_id.wind_turbine_id else '',
                             str(deterrent.cannon_id.installation_location) if deterrent.cannon_id and deterrent.cannon_id.installation_location else '',
-                            deterrent.cannon_firing_time.strftime('%Y-%m-%d %H:%M:%S') if deterrent.cannon_firing_time else '',
+                            cannon_firing_time,
                             str(deterrent.speaker_id.speaker_id) if deterrent.speaker_id else '',
                             str(deterrent.sound_id.sound_type) if deterrent.sound_id and deterrent.sound_id.sound_type else '',
                             '성공' if deterrent.is_success else '실패'
@@ -495,44 +575,6 @@ def export_database_csv(request):
                     except Exception as e:
                         logger.error(f"Deterrent CSV 행 처리 오류: {str(e)}")
                         continue
-            
-            # 6. 데이터베이스 요약 정보 CSV 파일 생성
-            summary_file = os.path.join(temp_dir, 'summary.csv')
-            with open(summary_file, 'w', newline='', encoding='utf-8-sig') as f:
-                writer = csv.writer(f, quoting=csv.QUOTE_ALL)
-                writer.writerow(['데이터베이스 종합 보고서'])
-                writer.writerow(['생성 날짜', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
-                writer.writerow([])
-                
-                # 탐지 정보
-                writer.writerow(['1. 감지 기록'])
-                writer.writerow(['총 감지 기록 수', str(DetectionInfo.objects.count())])
-                
-                # 오늘의 감지 수
-                today = datetime.datetime.now().date()
-                today_start = datetime.datetime.combine(today, datetime.time.min)
-                today_end = datetime.datetime.combine(today, datetime.time.max)
-                writer.writerow(['오늘의 감지 기록 수', str(DetectionInfo.objects.filter(
-                    detection_time__range=(today_start, today_end)
-                ).count())])
-                writer.writerow([])
-                
-                # 카메라 정보
-                writer.writerow(['2. 카메라 정보'])
-                writer.writerow(['총 카메라 수', str(Camera.objects.count())])
-                writer.writerow(['활성 카메라 수', str(Camera.objects.filter(status='활성').count())])
-                writer.writerow([])
-                
-                # 조류 클래스 정보
-                writer.writerow(['3. 조류 클래스 정보'])
-                writer.writerow(['총 조류 클래스 수', str(BirdClass.objects.count())])
-                writer.writerow([])
-                
-                # 퇴치 정보
-                writer.writerow(['4. 퇴치 기록'])
-                writer.writerow(['총 퇴치 기록 수', str(DeterrentRecord.objects.count())])
-                writer.writerow(['성공한 퇴치 수', str(DeterrentRecord.objects.filter(is_success=True).count())])
-                writer.writerow(['실패한 퇴치 수', str(DeterrentRecord.objects.filter(is_success=False).count())])
             
             # ZIP 파일 생성 (하나씩 파일 추가)
             zip_filename = os.path.join(temp_dir, "database_export.zip")
@@ -598,8 +640,8 @@ def export_detections_csv(request):
         if camera_id:
             detections = detections.filter(camera_id=camera_id)
         
-        # 감지 ID 순서로 정렬
-        detections = detections.order_by('detection_id')
+        # 감지 ID 순서로 정렬에서 날짜 내림차순으로 변경
+        detections = detections.order_by('-detection_time')
         
         # CSV 작성 - 관련 테이블 정보 포함하여 더 많은 데이터 제공
         writer = csv.writer(response, quoting=csv.QUOTE_ALL)  # 모든 필드 인용 처리
@@ -607,9 +649,22 @@ def export_detections_csv(request):
         
         for detection in detections:
             try:
+                # 시간을 KST로 변환
+                detection_time = ''
+                if detection.detection_time:
+                    # 시간대 정보가 없다면 UTC로 가정하고 KST로 변환
+                    if detection.detection_time.tzinfo is None:
+                        aware_time = pytz.utc.localize(detection.detection_time)
+                    else:
+                        aware_time = detection.detection_time
+                    
+                    # KST로 변환
+                    kst_time = aware_time.astimezone(KST)
+                    detection_time = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+                
                 writer.writerow([
                     str(detection.detection_id) if detection.detection_id else '',
-                    detection.detection_time.strftime('%Y-%m-%d %H:%M:%S') if detection.detection_time else '',
+                    detection_time,
                     str(detection.bb_count) if detection.bb_count is not None else '0',
                     str(detection.camera_id.camera_id) if detection.camera_id else '',
                     str(detection.camera_id.wind_turbine_id) if detection.camera_id and detection.camera_id.wind_turbine_id else '',
@@ -681,9 +736,19 @@ def export_bird_analysis_csv(request):
                 height = bb.bb_bottom - bb.bb_top if bb.bb_bottom is not None and bb.bb_top is not None else 0
                 area = width * height
                 
+                # 시간을 KST로 변환
                 detection_time = ''
                 if bb.detection_info_id and bb.detection_info_id.detection_time:
-                    detection_time = bb.detection_info_id.detection_time.strftime('%Y-%m-%d %H:%M:%S')
+                    # 시간대 정보가 없다면 UTC로 가정하고 KST로 변환
+                    dt = bb.detection_info_id.detection_time
+                    if dt.tzinfo is None:
+                        aware_time = pytz.utc.localize(dt)
+                    else:
+                        aware_time = dt
+                    
+                    # KST로 변환
+                    kst_time = aware_time.astimezone(KST)
+                    detection_time = kst_time.strftime('%Y-%m-%d %H:%M:%S')
                 
                 protection_status = ''
                 if bb.class_id and bb.class_id.protection_status_code:
@@ -724,44 +789,6 @@ def export_bird_analysis_csv(request):
         # 전체 함수 예외 처리
         logger.error(f"조류 분석 내보내기 오류: {str(e)}")
         return JsonResponse({'status': 'error', 'message': f'조류 분석 내보내기 오류: {str(e)}'}, status=500)
-
-def export_cameras_csv(request):
-    """카메라 정보를 CSV로 내보내기 - 모든 필드 포함 (견고성 개선)"""
-    try:
-        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
-        response['Content-Disposition'] = 'attachment; filename="cameras.csv"'
-        
-        # BOM 추가
-        response.write('\ufeff')
-        
-        writer = csv.writer(response, quoting=csv.QUOTE_ALL)  # 모든 필드 인용 처리
-        writer.writerow(['카메라 ID', '풍력 터빈 ID', '시야각', '설치 방향', '설치 높이', 'RTSP 주소', '상태', '감지 건수'])
-        
-        for camera in Camera.objects.order_by('camera_id').all():
-            try:
-                # 이 카메라로 감지된 건수 계산
-                detection_count = DetectionInfo.objects.filter(camera_id=camera.camera_id).count()
-                
-                writer.writerow([
-                    str(camera.camera_id) if camera.camera_id else '',
-                    str(camera.wind_turbine_id) if camera.wind_turbine_id else '',
-                    str(camera.viewing_angle) if camera.viewing_angle is not None else '',
-                    str(camera.installation_direction) if camera.installation_direction else '',
-                    str(camera.installation_height) if camera.installation_height is not None else '',
-                    str(camera.rtsp_address) if camera.rtsp_address else '',
-                    str(camera.status) if camera.status else '',
-                    str(detection_count)
-                ])
-            except Exception as e:
-                # 행 처리 중 오류 발생시 건너뛰기
-                logger.error(f"카메라 CSV 행 처리 오류: {str(e)}")
-                continue
-        
-        return response
-    except Exception as e:
-        # 전체 함수 예외 처리
-        logger.error(f"카메라 정보 내보내기 오류: {str(e)}")
-        return JsonResponse({'status': 'error', 'message': f'카메라 정보 내보내기 오류: {str(e)}'}, status=500)
 
 def export_birds_csv(request):
     """조류 클래스 정보를 CSV로 내보내기 - 더 많은 정보 제공 (견고성 개선)"""
@@ -823,9 +850,60 @@ def export_deterrents_csv(request):
         # 감지 ID 순서로 정렬 후 퇴치 ID 순서로 정렬
         for deterrent in DeterrentRecord.objects.select_related('detection_id', 'cannon_id', 'speaker_id', 'sound_id', 'detection_id__camera_id').order_by('detection_id__detection_id', 'deterrent_id').all():
             try:
+                # 시간값들을 KST로 변환
                 detection_time = ''
                 if deterrent.detection_id and deterrent.detection_id.detection_time:
-                    detection_time = deterrent.detection_id.detection_time.strftime('%Y-%m-%d %H:%M:%S')
+                    dt = deterrent.detection_id.detection_time
+                    if dt.tzinfo is None:
+                        aware_time = pytz.utc.localize(dt)
+                    else:
+                        aware_time = dt
+                    kst_time = aware_time.astimezone(KST)
+                    detection_time = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+                
+                # 퇴치 시작 시간 변환
+                deterrent_start_time = ''
+                if deterrent.deterrent_start_time:
+                    dt = deterrent.deterrent_start_time
+                    if dt.tzinfo is None:
+                        aware_time = pytz.utc.localize(dt)
+                    else:
+                        aware_time = dt
+                    kst_time = aware_time.astimezone(KST)
+                    deterrent_start_time = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+                
+                # 퇴치 종료 시간 변환
+                deterrent_end_time = ''
+                if deterrent.deterrent_end_time:
+                    dt = deterrent.deterrent_end_time
+                    if dt.tzinfo is None:
+                        aware_time = pytz.utc.localize(dt)
+                    else:
+                        aware_time = dt
+                    kst_time = aware_time.astimezone(KST)
+                    deterrent_end_time = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+                
+                # 발사 시간 변환
+                cannon_firing_time = ''
+                if deterrent.cannon_firing_time:
+                    dt = deterrent.cannon_firing_time
+                    if dt.tzinfo is None:
+                        aware_time = pytz.utc.localize(dt)
+                    else:
+                        aware_time = dt
+                    kst_time = aware_time.astimezone(KST)
+                    cannon_firing_time = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+                
+                # 대포 충전일 변환
+                lpg_charge_date = ''
+                if deterrent.cannon_id and deterrent.cannon_id.last_lpg_charge_date:
+                    dt = deterrent.cannon_id.last_lpg_charge_date
+                    if dt.tzinfo is None:
+                        aware_time = pytz.utc.localize(dt)
+                    else:
+                        aware_time = dt
+                    kst_time = aware_time.astimezone(KST)
+                    lpg_charge_date = kst_time.strftime('%Y-%m-%d')
                 
                 writer.writerow([
                     str(deterrent.deterrent_id) if deterrent.deterrent_id else '',
@@ -834,14 +912,17 @@ def export_deterrents_csv(request):
                     str(deterrent.detection_id.camera_id.camera_id) if deterrent.detection_id and deterrent.detection_id.camera_id else '',
                     str(deterrent.detection_distance) if deterrent.detection_distance is not None else '',
                     str(deterrent.object_count) if deterrent.object_count is not None else '',
-                    deterrent.deterrent_start_time.strftime('%Y-%m-%d %H:%M:%S') if deterrent.deterrent_start_time else '',
-                    deterrent.deterrent_end_time.strftime('%Y-%m-%d %H:%M:%S') if deterrent.deterrent_end_time else '',
+                    deterrent_start_time,
+                    deterrent_end_time,
                     str(deterrent.cannon_id.cannon_id) if deterrent.cannon_id else '',
                     str(deterrent.cannon_id.wind_turbine_id) if deterrent.cannon_id and deterrent.cannon_id.wind_turbine_id else '',
                     str(deterrent.cannon_id.installation_location) if deterrent.cannon_id and deterrent.cannon_id.installation_location else '',
-                    str(deterrent.cannon_id.last_lpg_charge_date.strftime('%Y-%m-%d')) if deterrent.cannon_id and deterrent.cannon_id.last_lpg_charge_date else '',
-                    deterrent.cannon_firing_time.strftime('%Y-%m-%d %H:%M:%S') if deterrent.cannon_firing_time else '',
+                    lpg_charge_date,
+                    cannon_firing_time,
                     str(deterrent.speaker_id.speaker_id) if deterrent.speaker_id else '',
+                    str(deterrent.speaker_id.wind_turbine_id) if deterrent.speaker_id and deterrent.speaker_id.wind_turbine_id else '',
+                    str(deterrent.speaker_id.installation_location) if deterrent.speaker_id and deterrent.speaker_id.installation_location else '',
+                    str(deterrent.sound_id.sound_id) if deterrent.sound_id else '',
                     str(deterrent.sound_id.sound_type) if deterrent.sound_id and deterrent.sound_id.sound_type else '',
                     str(deterrent.sound_id.file_path) if deterrent.sound_id and deterrent.sound_id.file_path else '',
                     '성공' if deterrent.is_success else '실패'

@@ -275,8 +275,6 @@
                             <a class="page-link" href="#" tabindex="-1">이전</a>
                         </li>
                         <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                        <li class="page-item"><a class="page-link" href="#">2</a></li>
-                        <li class="page-item"><a class="page-link" href="#">3</a></li>
                         <li class="page-item">
                             <a class="page-link" href="#">다음</a>
                         </li>
@@ -609,7 +607,7 @@
             if (dateFrom) url += `date_from=${dateFrom}&`;
             if (dateTo) url += `date_to=${dateTo}&`;
             if (cameraId) url += `camera_id=${cameraId}&`;
-            url += `per_page=100`;
+            url += `per_page=100&sort_by=date_desc`;
             
             fetch(url)
                 .then(response => response.json())
@@ -734,7 +732,7 @@
                     const dateTo = document.getElementById('detectionDateTo').value;
                     const cameraId = document.getElementById('detectionCamera').value;
                     
-                    let url = `/api/detections/filtered/?page=${page}&per_page=100&`;
+                    let url = `/api/detections/filtered/?page=${page}&per_page=100&sort_by=date_desc&`;
                     if (dateFrom) url += `date_from=${dateFrom}&`;
                     if (dateTo) url += `date_to=${dateTo}&`;
                     if (cameraId) url += `camera_id=${cameraId}&`;
@@ -826,22 +824,30 @@
             const dateTo = document.getElementById('birdAnalysisDateTo').value;
             const birdClass = document.getElementById('birdAnalysisBirdClass').value;
             
-            let url = `/api/bird-analysis/data/?`;
+            let url = `/api/bird-analysis/data/?get_all=true&`; // 전체 데이터 요청을 위해 get_all=true 추가
             if (dateFrom) url += `date_from=${dateFrom}&`;
             if (dateTo) url += `date_to=${dateTo}&`;
             if (birdClass) url += `bird_class=${birdClass}&`;
             
-            // 로딩 표시
+            // 로딩 메시지 표시
             document.getElementById('birdAnalysisTableBody').innerHTML = '<tr><td colspan="7" class="text-center">데이터를 불러오는 중입니다...</td></tr>';
             document.getElementById('detailedBirdDataBody').innerHTML = '<tr><td colspan="11" class="text-center">데이터를 불러오는 중입니다...</td></tr>';
-            document.getElementById('avgBoundingBoxSize').textContent = '-';
-            document.getElementById('maxBoundingBoxSize').textContent = '-';
-            document.getElementById('birdAnalysisCount').textContent = '-';
+            document.getElementById('avgBoundingBoxSize').textContent = '로딩 중...';
+            document.getElementById('maxBoundingBoxSize').textContent = '로딩 중...';
+            document.getElementById('birdAnalysisCount').textContent = '로딩 중...';
             
             fetch(url)
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success' && data.bb_data && data.bb_data.length > 0) {
+                        // 데이터 캐싱
+                        window.birdAnalysisCache = {
+                            data: data.bb_data,
+                            perPage: 20, // 페이지당 표시할 항목 수를 20개로 늘림
+                            totalRecords: data.total_records || data.bb_data.length,
+                            totalPages: Math.ceil((data.total_records || data.bb_data.length) / 20)
+                        };
+                        
                         // 바운딩 박스 크기 계산
                         let totalWidth = 0;
                         let totalHeight = 0;
@@ -915,54 +921,10 @@
                         });
                         
                         // 상세 데이터 테이블 업데이트
-                        const detailedBody = document.getElementById('detailedBirdDataBody');
-                        detailedBody.innerHTML = '';
+                        updateDetailedBirdData(data.bb_data, 1, window.birdAnalysisCache.perPage); // 1페이지 표시
                         
-                        data.bb_data.forEach(bb => {
-                            // 크기 및 백분율 계산
-                            const width = bb.bb_right - bb.bb_left;
-                            const height = bb.bb_bottom - bb.bb_top;
-                            const area = width * height;
-                            
-                            // 바운딩 박스 위치 백분율 변환
-                            const leftPercent = (bb.bb_left * 100).toFixed(1);
-                            const topPercent = (bb.bb_top * 100).toFixed(1);
-                            const rightPercent = (bb.bb_right * 100).toFixed(1);
-                            const bottomPercent = (bb.bb_bottom * 100).toFixed(1);
-                            
-                            // 바운딩 박스 크기 백분율 변환
-                            const widthPercent = (width * 100).toFixed(1);
-                            const heightPercent = (height * 100).toFixed(1);
-                            const areaPercent = (area * 10000).toFixed(1);
-                            
-                            // 날짜 포맷팅
-                            const detectionTime = new Date(bb.detection_time);
-                            const formattedDate = detectionTime.toLocaleString('ko-KR', {
-                                year: 'numeric',
-                                month: '2-digit',
-                                day: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit',
-                                hour12: false
-                            });
-                            
-                            const row = document.createElement('tr');
-                            row.innerHTML = `
-                                <td>${bb.record_id}</td>
-                                <td>${bb.class_name}</td>
-                                <td>${formattedDate}</td>
-                                <td>${bb.camera_id}</td>
-                                <td>${leftPercent}%</td>
-                                <td>${topPercent}%</td>
-                                <td>${rightPercent}%</td>
-                                <td>${bottomPercent}%</td>
-                                <td>${widthPercent}%</td>
-                                <td>${heightPercent}%</td>
-                                <td>${areaPercent}%²</td>
-                            `;
-                            detailedBody.appendChild(row);
-                        });
+                        // 페이지네이션 업데이트
+                        updateDetailedDataPagination(data.bb_data.length, 1, window.birdAnalysisCache.perPage);
                         
                         // 요약 통계 업데이트 (백분율로 변환)
                         const avgWidth = totalWidth / data.bb_data.length;
@@ -971,10 +933,10 @@
                             `${(avgWidth * 100).toFixed(1)}% × ${(avgHeight * 100).toFixed(1)}%`;
                         document.getElementById('maxBoundingBoxSize').textContent = 
                             `${(maxWidth * 100).toFixed(1)}% × ${(maxHeight * 100).toFixed(1)}%`;
-                        document.getElementById('birdAnalysisCount').textContent = data.bb_data.length;
+                        document.getElementById('birdAnalysisCount').textContent = data.total_records || data.bb_data.length;
                     } else {
-                        document.getElementById('birdAnalysisTableBody').innerHTML = '<tr><td colspan="7" class="text-center">검색 결과가 없습니다.</td></tr>';
-                        document.getElementById('detailedBirdDataBody').innerHTML = '<tr><td colspan="11" class="text-center">검색 결과가 없습니다.</td></tr>';
+                        document.getElementById('birdAnalysisTableBody').innerHTML = '<tr><td colspan="7" class="text-center">데이터가 없습니다. 필터링 버튼을 클릭하세요.</td></tr>';
+                        document.getElementById('detailedBirdDataBody').innerHTML = '<tr><td colspan="11" class="text-center">데이터가 없습니다. 필터링 버튼을 클릭하세요.</td></tr>';
                     }
                 })
                 .catch(error => {
@@ -986,177 +948,141 @@
                 });
         });
         
-        // 현재 날짜 설정 (감지 기록 탭)
-        const detectionToday = new Date();
-        const detectionLastMonth = new Date();
-        detectionLastMonth.setMonth(detectionToday.getMonth() - 1);
-        
-        document.getElementById('detectionDateTo').valueAsDate = detectionToday;
-        document.getElementById('detectionDateFrom').valueAsDate = detectionLastMonth;
-        
-        // 페이지 로드 시 초기 데이터 로드
-        // 감지 기록 탭 데이터 로드
-        fetch(`/api/detections/filtered/?per_page=100`)
-            .then(response => response.json())
-            .then(data => {
-                // 페이지네이션 업데이트
-                updatePagination(data.total_pages, data.current_page);
-                
-                // 바운딩 박스 토글 버튼 이벤트 리스너 추가
-                setupBBInfoToggleButtons();
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
+        // 상세 데이터 테이블 업데이트 함수
+        function updateDetailedBirdData(data, page, perPage) {
+            const tableBody = document.getElementById('detailedBirdDataBody');
+            tableBody.innerHTML = '';
             
-        // 조류 분석 탭 초기 데이터 로드
-        fetch(`/api/bird-analysis/data/`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success' && data.bb_data && data.bb_data.length > 0) {
-                    // 바운딩 박스 크기 계산
-                    let totalWidth = 0;
-                    let totalHeight = 0;
-                    let maxWidth = 0;
-                    let maxHeight = 0;
-                    let birdCounts = {};
-                    let birdSizes = {};
+            const startIdx = (page - 1) * perPage;
+            const endIdx = Math.min(startIdx + perPage, data.length);
+            const pageData = data.slice(startIdx, endIdx);
+            
+            if (pageData.length > 0) {
+                pageData.forEach(bb => {
+                    // 크기 및 백분율 계산
+                    const width = bb.bb_right - bb.bb_left;
+                    const height = bb.bb_bottom - bb.bb_top;
+                    const area = width * height;
                     
-                    // 데이터 처리 및 테이블 업데이트
-                    data.bb_data.forEach(bb => {
-                        const width = bb.bb_right - bb.bb_left;
-                        const height = bb.bb_bottom - bb.bb_top;
-                        const area = width * height;
-                        
-                        // 총계 업데이트
-                        totalWidth += width;
-                        totalHeight += height;
-                        maxWidth = Math.max(maxWidth, width);
-                        maxHeight = Math.max(maxHeight, height);
-                        
-                        // 조류별 통계 업데이트
-                        if (!birdCounts[bb.class_name]) {
-                            birdCounts[bb.class_name] = 0;
-                            birdSizes[bb.class_name] = {
-                                totalWidth: 0,
-                                totalHeight: 0,
-                                totalArea: 0,
-                                maxArea: 0,
-                                minArea: Number.MAX_VALUE
-                            };
-                        }
-                        
-                        birdCounts[bb.class_name]++;
-                        birdSizes[bb.class_name].totalWidth += width;
-                        birdSizes[bb.class_name].totalHeight += height;
-                        birdSizes[bb.class_name].totalArea += area;
-                        birdSizes[bb.class_name].maxArea = Math.max(birdSizes[bb.class_name].maxArea, area);
-                        birdSizes[bb.class_name].minArea = Math.min(birdSizes[bb.class_name].minArea, area);
+                    // 바운딩 박스 위치 백분율 변환
+                    const leftPercent = (bb.bb_left * 100).toFixed(1);
+                    const topPercent = (bb.bb_top * 100).toFixed(1);
+                    const rightPercent = (bb.bb_right * 100).toFixed(1);
+                    const bottomPercent = (bb.bb_bottom * 100).toFixed(1);
+                    
+                    // 바운딩 박스 크기 백분율 변환
+                    const widthPercent = (width * 100).toFixed(1);
+                    const heightPercent = (height * 100).toFixed(1);
+                    const areaPercent = (area * 10000).toFixed(1);
+                    
+                    // 날짜 포맷팅
+                    const detectionTime = new Date(bb.detection_time);
+                    const formattedDate = detectionTime.toLocaleString('ko-KR', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: false
                     });
                     
-                    // 조류별 평균 계산 및 테이블 업데이트
-                    const tableBody = document.getElementById('birdAnalysisTableBody');
-                    tableBody.innerHTML = '';
-                    
-                    Object.keys(birdCounts).forEach(birdName => {
-                        const count = birdCounts[birdName];
-                        const avgWidth = birdSizes[birdName].totalWidth / count;
-                        const avgHeight = birdSizes[birdName].totalHeight / count;
-                        const avgArea = birdSizes[birdName].totalArea / count;
-                        const maxArea = birdSizes[birdName].maxArea;
-                        const minArea = birdSizes[birdName].minArea === Number.MAX_VALUE ? 0 : birdSizes[birdName].minArea;
-                        
-                        // 백분율로 변환 (0.14 → 14%)
-                        const avgWidthPercent = (avgWidth * 100).toFixed(1);
-                        const avgHeightPercent = (avgHeight * 100).toFixed(1);
-                        const avgAreaPercent = (avgArea * 10000).toFixed(1);
-                        const maxAreaPercent = (maxArea * 10000).toFixed(1);
-                        const minAreaPercent = (minArea * 10000).toFixed(1);
-                        
-                        const row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td>${birdName}</td>
-                            <td>${count}</td>
-                            <td>${avgWidthPercent}%</td>
-                            <td>${avgHeightPercent}%</td>
-                            <td>${avgAreaPercent}%²</td>
-                            <td>${maxAreaPercent}%²</td>
-                            <td>${minAreaPercent}%²</td>
-                        `;
-                        tableBody.appendChild(row);
-                    });
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${bb.record_id}</td>
+                        <td>${bb.class_name}</td>
+                        <td>${formattedDate}</td>
+                        <td>${bb.camera_id}</td>
+                        <td>${leftPercent}%</td>
+                        <td>${topPercent}%</td>
+                        <td>${rightPercent}%</td>
+                        <td>${bottomPercent}%</td>
+                        <td>${widthPercent}%</td>
+                        <td>${heightPercent}%</td>
+                        <td>${areaPercent}%²</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } else {
+                tableBody.innerHTML = '<tr><td colspan="11" class="text-center">데이터가 없습니다.</td></tr>';
+            }
+        }
+        
+        // 페이지네이션 업데이트 함수
+        function updateDetailedDataPagination(totalRecords, currentPage, perPage) {
+            const pagination = document.getElementById('detailedDataPagination');
+            pagination.innerHTML = '';
+            
+            // 총 페이지 수
+            const totalPages = Math.ceil(totalRecords / perPage);
+            
+            if (totalPages <= 0) {
+                pagination.innerHTML = '';
+                return;
+            }
+            
+            // 처음 페이지 버튼
+            const firstItem = document.createElement('li');
+            firstItem.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+            firstItem.innerHTML = `<a class="page-link" href="#" data-page="1"><i class="fas fa-angle-double-left"></i></a>`;
+            pagination.appendChild(firstItem);
+            
+            // 이전 버튼
+            const prevItem = document.createElement('li');
+            prevItem.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+            prevItem.innerHTML = `<a class="page-link" href="#" data-page="${currentPage - 1}">이전</a>`;
+            pagination.appendChild(prevItem);
+            
+            // 페이지 번호
+            const maxPages = 5; // 표시할 최대 페이지 수
+            const startPage = Math.max(1, currentPage - Math.floor(maxPages / 2));
+            const endPage = Math.min(totalPages, startPage + maxPages - 1);
+            
+            for (let i = startPage; i <= endPage; i++) {
+                const pageItem = document.createElement('li');
+                pageItem.className = `page-item ${i === currentPage ? 'active' : ''}`;
+                pageItem.innerHTML = `<a class="page-link" href="#" data-page="${i}">${i}</a>`;
+                pagination.appendChild(pageItem);
+            }
+            
+            // 다음 버튼
+            const nextItem = document.createElement('li');
+            nextItem.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+            nextItem.innerHTML = `<a class="page-link" href="#" data-page="${currentPage + 1}">다음</a>`;
+            pagination.appendChild(nextItem);
+            
+            // 마지막 페이지 버튼
+            const lastItem = document.createElement('li');
+            lastItem.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+            lastItem.innerHTML = `<a class="page-link" href="#" data-page="${totalPages}"><i class="fas fa-angle-double-right"></i></a>`;
+            pagination.appendChild(lastItem);
+            
+            // 페이지 클릭 이벤트 (전역 데이터 저장을 위해 데이터 캐싱)
+            window.birdAnalysisCache = window.birdAnalysisCache || {};
+            window.birdAnalysisCache.data = window.birdAnalysisCache.data || [];
+            window.birdAnalysisCache.perPage = perPage;
+            
+            // 현재 데이터 캐싱
+            if (totalRecords > 0) {
+                window.birdAnalysisCache.data = window.birdAnalysisCache.data || [];
+            }
+            
+            // 페이지 클릭 이벤트
+            pagination.querySelectorAll('.page-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const page = parseInt(this.getAttribute('data-page'));
+                    if (page < 1 || page > totalPages || page === currentPage) return;
                     
                     // 상세 데이터 테이블 업데이트
-                    const detailedBody = document.getElementById('detailedBirdDataBody');
-                    detailedBody.innerHTML = '';
+                    updateDetailedBirdData(window.birdAnalysisCache.data, page, window.birdAnalysisCache.perPage);
                     
-                    data.bb_data.forEach(bb => {
-                        // 크기 및 백분율 계산
-                        const width = bb.bb_right - bb.bb_left;
-                        const height = bb.bb_bottom - bb.bb_top;
-                        const area = width * height;
-                        
-                        // 바운딩 박스 위치 백분율 변환
-                        const leftPercent = (bb.bb_left * 100).toFixed(1);
-                        const topPercent = (bb.bb_top * 100).toFixed(1);
-                        const rightPercent = (bb.bb_right * 100).toFixed(1);
-                        const bottomPercent = (bb.bb_bottom * 100).toFixed(1);
-                        
-                        // 바운딩 박스 크기 백분율 변환
-                        const widthPercent = (width * 100).toFixed(1);
-                        const heightPercent = (height * 100).toFixed(1);
-                        const areaPercent = (area * 10000).toFixed(1);
-                        
-                        // 날짜 포맷팅
-                        const detectionTime = new Date(bb.detection_time);
-                        const formattedDate = detectionTime.toLocaleString('ko-KR', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                            hour12: false
-                        });
-                        
-                        const row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td>${bb.record_id}</td>
-                            <td>${bb.class_name}</td>
-                            <td>${formattedDate}</td>
-                            <td>${bb.camera_id}</td>
-                            <td>${leftPercent}%</td>
-                            <td>${topPercent}%</td>
-                            <td>${rightPercent}%</td>
-                            <td>${bottomPercent}%</td>
-                            <td>${widthPercent}%</td>
-                            <td>${heightPercent}%</td>
-                            <td>${areaPercent}%²</td>
-                        `;
-                        detailedBody.appendChild(row);
-                    });
-                    
-                    // 요약 통계 업데이트 (백분율로 변환)
-                    const avgWidth = totalWidth / data.bb_data.length;
-                    const avgHeight = totalHeight / data.bb_data.length;
-                    document.getElementById('avgBoundingBoxSize').textContent = 
-                        `${(avgWidth * 100).toFixed(1)}% × ${(avgHeight * 100).toFixed(1)}%`;
-                    document.getElementById('maxBoundingBoxSize').textContent = 
-                        `${(maxWidth * 100).toFixed(1)}% × ${(maxHeight * 100).toFixed(1)}%`;
-                    document.getElementById('birdAnalysisCount').textContent = data.bb_data.length;
-                } else {
-                    document.getElementById('birdAnalysisTableBody').innerHTML = '<tr><td colspan="7" class="text-center">데이터가 없습니다. 필터링 버튼을 클릭하세요.</td></tr>';
-                    document.getElementById('detailedBirdDataBody').innerHTML = '<tr><td colspan="11" class="text-center">데이터가 없습니다. 필터링 버튼을 클릭하세요.</td></tr>';
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('birdAnalysisTableBody').innerHTML = 
-                    '<tr><td colspan="7" class="text-center text-danger">데이터 로드 중 오류가 발생했습니다.</td></tr>';
-                document.getElementById('detailedBirdDataBody').innerHTML = 
-                    '<tr><td colspan="11" class="text-center text-danger">데이터 로드 중 오류가 발생했습니다.</td></tr>';
+                    // 페이지네이션 업데이트
+                    updateDetailedDataPagination(window.birdAnalysisCache.data.length, page, window.birdAnalysisCache.perPage);
+                });
             });
-            
+        }
+        
         // 바운딩 박스 정보 토글 버튼 이벤트 설정 함수
         function setupBBInfoToggleButtons() {
             // 이벤트 리스너를 중복 등록하지 않도록 합니다.
@@ -1510,6 +1436,141 @@
 
         // 페이지 로드 시 초기화 함수 호출
         setupConfirmTextValidation();
+
+        // 현재 날짜 설정 (감지 기록 탭)
+        const detectionToday = new Date();
+        const detectionLastMonth = new Date();
+        detectionLastMonth.setMonth(detectionToday.getMonth() - 1);
+        
+        document.getElementById('detectionDateTo').valueAsDate = detectionToday;
+        document.getElementById('detectionDateFrom').valueAsDate = detectionLastMonth;
+        
+        // 페이지 로드 시 초기 데이터 로드
+        // 감지 기록 탭 데이터 로드
+        fetch(`/api/detections/filtered/?per_page=100&sort_by=date_desc`)
+            .then(response => response.json())
+            .then(data => {
+                // 페이지네이션 업데이트
+                updatePagination(data.total_pages, data.current_page);
+                
+                // 바운딩 박스 토글 버튼 이벤트 리스너 추가
+                setupBBInfoToggleButtons();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+            
+        // 조류 분석 탭 초기 데이터 로드
+        fetch(`/api/bird-analysis/data/?get_all=true`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success' && data.bb_data && data.bb_data.length > 0) {
+                    // 데이터 캐싱
+                    window.birdAnalysisCache = {
+                        data: data.bb_data,
+                        perPage: 20, // 페이지당 표시할 항목 수를 20개로 늘림
+                        totalRecords: data.total_records || data.bb_data.length,
+                        totalPages: Math.ceil((data.total_records || data.bb_data.length) / 20)
+                    };
+                    
+                    // 바운딩 박스 크기 계산
+                    let totalWidth = 0;
+                    let totalHeight = 0;
+                    let maxWidth = 0;
+                    let maxHeight = 0;
+                    let birdCounts = {};
+                    let birdSizes = {};
+                    
+                    // 데이터 처리 및 테이블 업데이트
+                    data.bb_data.forEach(bb => {
+                        const width = bb.bb_right - bb.bb_left;
+                        const height = bb.bb_bottom - bb.bb_top;
+                        const area = width * height;
+                        
+                        // 총계 업데이트
+                        totalWidth += width;
+                        totalHeight += height;
+                        maxWidth = Math.max(maxWidth, width);
+                        maxHeight = Math.max(maxHeight, height);
+                        
+                        // 조류별 통계 업데이트
+                        if (!birdCounts[bb.class_name]) {
+                            birdCounts[bb.class_name] = 0;
+                            birdSizes[bb.class_name] = {
+                                totalWidth: 0,
+                                totalHeight: 0,
+                                totalArea: 0,
+                                maxArea: 0,
+                                minArea: Number.MAX_VALUE
+                            };
+                        }
+                        
+                        birdCounts[bb.class_name]++;
+                        birdSizes[bb.class_name].totalWidth += width;
+                        birdSizes[bb.class_name].totalHeight += height;
+                        birdSizes[bb.class_name].totalArea += area;
+                        birdSizes[bb.class_name].maxArea = Math.max(birdSizes[bb.class_name].maxArea, area);
+                        birdSizes[bb.class_name].minArea = Math.min(birdSizes[bb.class_name].minArea, area);
+                    });
+                    
+                    // 조류별 평균 계산 및 테이블 업데이트
+                    const tableBody = document.getElementById('birdAnalysisTableBody');
+                    tableBody.innerHTML = '';
+                    
+                    Object.keys(birdCounts).forEach(birdName => {
+                        const count = birdCounts[birdName];
+                        const avgWidth = birdSizes[birdName].totalWidth / count;
+                        const avgHeight = birdSizes[birdName].totalHeight / count;
+                        const avgArea = birdSizes[birdName].totalArea / count;
+                        const maxArea = birdSizes[birdName].maxArea;
+                        const minArea = birdSizes[birdName].minArea === Number.MAX_VALUE ? 0 : birdSizes[birdName].minArea;
+                        
+                        // 백분율로 변환 (0.14 → 14%)
+                        const avgWidthPercent = (avgWidth * 100).toFixed(1);
+                        const avgHeightPercent = (avgHeight * 100).toFixed(1);
+                        const avgAreaPercent = (avgArea * 10000).toFixed(1);
+                        const maxAreaPercent = (maxArea * 10000).toFixed(1);
+                        const minAreaPercent = (minArea * 10000).toFixed(1);
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${birdName}</td>
+                            <td>${count}</td>
+                            <td>${avgWidthPercent}%</td>
+                            <td>${avgHeightPercent}%</td>
+                            <td>${avgAreaPercent}%²</td>
+                            <td>${maxAreaPercent}%²</td>
+                            <td>${minAreaPercent}%²</td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                    
+                    // 상세 데이터 테이블 업데이트
+                    updateDetailedBirdData(data.bb_data, 1, window.birdAnalysisCache.perPage); // 1페이지 표시
+                    
+                    // 페이지네이션 업데이트
+                    updateDetailedDataPagination(data.bb_data.length, 1, window.birdAnalysisCache.perPage);
+                    
+                    // 요약 통계 업데이트 (백분율로 변환)
+                    const avgWidth = totalWidth / data.bb_data.length;
+                    const avgHeight = totalHeight / data.bb_data.length;
+                    document.getElementById('avgBoundingBoxSize').textContent = 
+                        `${(avgWidth * 100).toFixed(1)}% × ${(avgHeight * 100).toFixed(1)}%`;
+                    document.getElementById('maxBoundingBoxSize').textContent = 
+                        `${(maxWidth * 100).toFixed(1)}% × ${(maxHeight * 100).toFixed(1)}%`;
+                    document.getElementById('birdAnalysisCount').textContent = data.total_records || data.bb_data.length;
+                } else {
+                    document.getElementById('birdAnalysisTableBody').innerHTML = '<tr><td colspan="7" class="text-center">데이터가 없습니다. 필터링 버튼을 클릭하세요.</td></tr>';
+                    document.getElementById('detailedBirdDataBody').innerHTML = '<tr><td colspan="11" class="text-center">데이터가 없습니다. 필터링 버튼을 클릭하세요.</td></tr>';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('birdAnalysisTableBody').innerHTML = 
+                    '<tr><td colspan="7" class="text-center text-danger">데이터 로드 중 오류가 발생했습니다.</td></tr>';
+                document.getElementById('detailedBirdDataBody').innerHTML = 
+                    '<tr><td colspan="11" class="text-center text-danger">데이터 로드 중 오류가 발생했습니다.</td></tr>';
+            });
     });
     
     // 바운딩 박스 정보 토글 함수 - 인라인 이벤트 핸들러용
