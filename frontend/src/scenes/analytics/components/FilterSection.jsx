@@ -26,6 +26,8 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
  * @param {Function} props.onCsvDownload - CSV 다운로드 핸들러
  * @param {boolean} props.isLoading - 로딩 상태
  * @param {boolean} props.hasData - 데이터 존재 여부
+ * @param {Array} props.birdClasses - 조류 클래스 목록
+ * @param {Array} props.cameras - 카메라 목록
  * @returns {JSX.Element}
  */
 const FilterSection = ({ 
@@ -34,9 +36,15 @@ const FilterSection = ({
   onApplyFilters, 
   onCsvDownload, 
   isLoading, 
-  hasData 
+  hasData,
+  birdClasses = [],
+  cameras = []
 }) => {
-  const { timeRange, species, startDate, endDate } = filters;
+  const { timeRange, startDate, endDate, birdClass, cameraId } = filters;
+
+  // 데이터가 배열인지 확인
+  const cameraArray = Array.isArray(cameras) ? cameras : [];
+  const birdClassArray = Array.isArray(birdClasses) ? birdClasses : [];
 
   return (
     <Paper sx={{ p: 2, mb: 2, bgcolor: '#0a1929', border: '1px solid #1e3a5a' }}>
@@ -51,7 +59,7 @@ const FilterSection = ({
         <Grid container spacing={2}>
           <Grid item xs={12}>
             <Grid container spacing={2} alignItems="flex-end">
-              <Grid item xs={12} sm={4} md={3}>
+              <Grid item xs={12} sm={4} md={2}>
                 <Typography variant="subtitle2" sx={{ mb: 0.5 }}>기간</Typography>
                 <FormControl fullWidth size="small">
                   <InputLabel id="time-range-label">기간</InputLabel>
@@ -70,23 +78,42 @@ const FilterSection = ({
                 </FormControl>
               </Grid>
               
-              <Grid item xs={12} sm={4} md={3}>
+              <Grid item xs={12} sm={4} md={2}>
                 <Typography variant="subtitle2" sx={{ mb: 0.5 }}>조류 종류</Typography>
                 <FormControl fullWidth size="small">
                   <InputLabel id="species-label">조류 종류</InputLabel>
                   <Select
                     labelId="species-label"
-                    value={species}
+                    value={birdClass}
                     label="조류 종류"
-                    onChange={(e) => onFilterChange('species', e.target.value)}
+                    onChange={(e) => onFilterChange('birdClass', e.target.value)}
                   >
-                    <MenuItem value="all">모든 종류</MenuItem>
-                    <MenuItem value="eagle">독수리</MenuItem>
-                    <MenuItem value="hawk">매</MenuItem>
-                    <MenuItem value="falcon">팔콘</MenuItem>
-                    <MenuItem value="seagull">갈매기</MenuItem>
-                    <MenuItem value="crow">까마귀</MenuItem>
-                    <MenuItem value="sparrow">참새</MenuItem>
+                    <MenuItem value="">전체</MenuItem>
+                    {birdClassArray.map((bird) => (
+                      <MenuItem key={bird.class_id} value={bird.class_id}>
+                        {bird.bird_name_ko}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              
+              <Grid item xs={12} sm={4} md={2}>
+                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>카메라</Typography>
+                <FormControl fullWidth size="small">
+                  <InputLabel id="camera-label">카메라</InputLabel>
+                  <Select
+                    labelId="camera-label"
+                    value={cameraId}
+                    label="카메라"
+                    onChange={(e) => onFilterChange('cameraId', e.target.value)}
+                  >
+                    <MenuItem value="">전체</MenuItem>
+                    {cameraArray.map((camera) => (
+                      <MenuItem key={camera.camera_id} value={camera.camera_id}>
+                        카메라 {camera.camera_id}
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
               </Grid>
@@ -117,7 +144,7 @@ const FilterSection = ({
                 </>
               )}
               
-              <Grid item xs={6} sm={3} md={2}>
+              <Grid item xs={6} sm={3} md={1}>
                 <Button 
                   variant="outlined" 
                   color="primary" 
@@ -127,11 +154,11 @@ const FilterSection = ({
                   startIcon={<FileDownloadIcon />}
                   sx={{ height: 40 }}
                 >
-                  CSV 저장
+                  CSV
                 </Button>
               </Grid>
               
-              <Grid item xs={6} sm={3} md={2} sx={{ ml: { xs: 0, md: 'auto' } }}>
+              <Grid item xs={6} sm={3} md={1} sx={{ ml: { xs: 0, md: 'auto' } }}>
                 <Button 
                   variant="contained" 
                   color="primary" 
@@ -141,8 +168,8 @@ const FilterSection = ({
                   sx={{ height: 40 }}
                 >
                   {isLoading
-                    ? <><CircularProgress size={16} sx={{ mr: 1, color: 'white' }} />로딩 중...</>
-                    : '필터 적용'
+                    ? <><CircularProgress size={16} sx={{ mr: 1, color: 'white' }} />로딩</>
+                    : '적용'
                   }
                 </Button>
               </Grid>

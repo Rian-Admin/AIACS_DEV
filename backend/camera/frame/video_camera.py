@@ -33,15 +33,15 @@ class VideoCamera:
         self._last_results = None
         self._last_processed_result = None
         self._last_db_update = time.time()
-        self._db_update_interval = 30  # DB 업데이트 간격 (초) - 30초로 늘림
+        self._db_update_interval = 5  # DB 업데이트 간격 (초) - 5초로 변경
         self._capture_timing_stats = []
         
         # 마지막 유효 프레임 저장 변수 초기화
         self._last_valid_frame = None
         self._last_frame_time = 0
-        self._frame_cache_time = 0.005  # 캐시 시간 5ms로 단축 (거의 항상 새 프레임 사용)
+        self._frame_cache_time = 0.001  # 캐시 시간 1ms로 단축 (거의 항상 새 프레임 사용)
         self._processing_lock = threading.Lock()
-
+        
         try:
             from ..frame.camera_manager import CameraManager
             self.camera_manager = CameraManager.get_instance()
@@ -165,6 +165,19 @@ class VideoCamera:
             # 마지막 유효 프레임 저장 (디버깅을 위해)
             self._last_valid_frame = frame.copy()
             self._last_frame_time = time.time()
+            
+            # 동기식 감지 결과 업데이트
+            if latest_result:
+                self._last_results = latest_result
+                self._last_processed_result = latest_result
+                
+                # DB 저장 처리 (주기적으로)
+                current_time = time.time()
+                if current_time - self._last_db_update >= self._db_update_interval:
+                    if hasattr(latest_result, 'boxes') and hasattr(latest_result, 'orig_shape'):
+                        with self._processing_lock:
+                            height, width = latest_result.orig_shape
+                            self._process_detection_results(latest_result.boxes, width, height)
             
             # 바운딩 박스 그리기 - 최신 감지 결과 사용
             if latest_result and hasattr(latest_result, 'boxes') and hasattr(latest_result.boxes, '__len__') and len(latest_result.boxes) > 0:

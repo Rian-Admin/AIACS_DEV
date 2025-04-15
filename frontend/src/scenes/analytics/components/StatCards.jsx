@@ -1,91 +1,125 @@
 import React from 'react';
-import { Grid, Box, Typography, Card, CardContent } from '@mui/material';
+import { 
+  Grid, 
+  Paper, 
+  Typography, 
+  Box, 
+  Divider,
+} from '@mui/material';
 import BarChartIcon from '@mui/icons-material/BarChart';
-import WarningIcon from '@mui/icons-material/Warning';
-import BirdIcon from '@mui/icons-material/Pets';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import BubbleChartIcon from '@mui/icons-material/BubbleChart';
+import ViewComfyIcon from '@mui/icons-material/ViewComfy';
+
+/**
+ * 숫자 포맷팅 헬퍼 함수
+ * @param {number} num - 포맷팅할 숫자
+ * @param {number} decimals - 소수점 자릿수
+ * @returns {string} 포맷팅된 숫자 문자열
+ */
+const formatNumber = (num, decimals = 0) => {
+  if (num === undefined || num === null) return '0';
+  
+  return Number(num).toLocaleString('ko-KR', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  });
+};
 
 /**
  * 통계 카드 컴포넌트
- * @param {Object} props
- * @param {string} props.title - 카드 제목
- * @param {string|number} props.value - 카드 값
- * @param {string} props.subtitle - 카드 부제목
- * @param {string} props.color - 카드 색상
- * @param {React.ReactNode} props.icon - 카드 아이콘
- * @returns {JSX.Element}
- */
-const StatCard = ({ title, value, subtitle, color, icon }) => (
-  <Card sx={{ bgcolor: '#0a1929', border: '1px solid #1e3a5a', height: '100%' }}>
-    <CardContent>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <Box>
-          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-            {title}
-          </Typography>
-          <Typography variant="h4" component="div" color={color || 'primary.main'}>
-            {value}
-          </Typography>
-          {subtitle && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              {subtitle}
-            </Typography>
-          )}
-        </Box>
-        {icon && (
-          <Box sx={{ color: color || 'primary.main', fontSize: 40 }}>
-            {icon}
-          </Box>
-        )}
-      </Box>
-    </CardContent>
-  </Card>
-);
-
-/**
- * 통계 카드 섹션 컴포넌트
  * @param {Object} props
  * @param {Object} props.data - 통계 데이터
  * @returns {JSX.Element}
  */
 const StatCards = ({ data }) => {
+  const { totalDetections, statistics } = data;
+  
   return (
-    <Grid container spacing={2} sx={{ mb: 2 }}>
-      <Grid item xs={12} sm={6} md={3}>
-        <StatCard 
-          title="총 탐지 수"
-          value={data.totalDetections.toLocaleString()}
-          subtitle="전체 조류 탐지 횟수"
-          color="#2196f3"
-          icon={<BarChartIcon />}
-        />
+    <Grid container spacing={2} sx={{ mb: 3 }}>
+      {/* 총 탐지 수 카드 */}
+      <Grid item xs={12} sm={6} md={4}>
+        <Paper 
+          sx={{ 
+            p: 2, 
+            bgcolor: '#0a1929',
+            border: '1px solid #1e3a5a',
+            height: '100%' 
+          }}
+        >
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Box>
+              <Typography variant="overline" color="primary">
+                총 탐지 수
+              </Typography>
+              <Typography variant="h4" sx={{ mt: 1, mb: 0.5, fontWeight: 'bold' }}>
+                {formatNumber(totalDetections)}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                필터링된 모든 탐지 기록
+              </Typography>
+            </Box>
+            <BarChartIcon color="primary" sx={{ fontSize: 48, opacity: 0.7 }} />
+          </Box>
+        </Paper>
       </Grid>
-      <Grid item xs={12} sm={6} md={3}>
-        <StatCard 
-          title="금일 탐지 수"
-          value={data.todayDetections.toLocaleString()}
-          subtitle="오늘 발생한 조류 탐지"
-          color="#4caf50"
-          icon={<BirdIcon />}
-        />
+      
+      {/* 평균 바운딩 박스 크기 */}
+      <Grid item xs={12} sm={6} md={4}>
+        <Paper 
+          sx={{ 
+            p: 2, 
+            bgcolor: '#0a1929',
+            border: '1px solid #1e3a5a',
+            height: '100%' 
+          }}
+        >
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Box>
+              <Typography variant="overline" color="success.main">
+                평균 바운딩 박스 크기
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'baseline', mt: 1, mb: 0.5 }}>
+                <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                  {formatNumber(statistics?.avgSize || 0, 1)}%
+                </Typography>
+                <Typography variant="subtitle1" sx={{ ml: 1 }}>
+                  × {formatNumber(statistics?.avgHeight || 0, 1)}%
+                </Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                너비 × 높이 (이미지 대비 %)
+              </Typography>
+            </Box>
+            <BubbleChartIcon color="success" sx={{ fontSize: 48, opacity: 0.7 }} />
+          </Box>
+        </Paper>
       </Grid>
-      <Grid item xs={12} sm={6} md={3}>
-        <StatCard 
-          title="고위험 탐지"
-          value={data.highRiskDetections.toLocaleString()}
-          subtitle={`전체의 ${Math.round(data.highRiskDetections / data.totalDetections * 100)}%`}
-          color="#f44336"
-          icon={<WarningIcon />}
-        />
-      </Grid>
-      <Grid item xs={12} sm={6} md={3}>
-        <StatCard 
-          title="탐지 증가율"
-          value="+12.5%"
-          subtitle="지난 주 대비"
-          color="#ff9800"
-          icon={<TrendingUpIcon />}
-        />
+      
+      {/* 바운딩 박스 데이터 수 */}
+      <Grid item xs={12} sm={6} md={4}>
+        <Paper 
+          sx={{ 
+            p: 2, 
+            bgcolor: '#0a1929',
+            border: '1px solid #1e3a5a',
+            height: '100%' 
+          }}
+        >
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Box>
+              <Typography variant="overline" color="info.main">
+                바운딩 박스 데이터 수
+              </Typography>
+              <Typography variant="h4" sx={{ mt: 1, mb: 0.5, fontWeight: 'bold' }}>
+                {formatNumber(statistics?.count || 0)}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                분석 기간 내 총 바운딩 박스 수
+              </Typography>
+            </Box>
+            <ViewComfyIcon color="info" sx={{ fontSize: 48, opacity: 0.7 }} />
+          </Box>
+        </Paper>
       </Grid>
     </Grid>
   );

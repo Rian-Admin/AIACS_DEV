@@ -344,6 +344,10 @@ class StreamHandler:
             if result is not None:
                 self.last_detection_result = result
                 
+                # detector의 result_dict에도 저장 (get_latest_result 함수를 위해)
+                with self.detector.result_lock:
+                    self.detector.result_dict[self.camera_number] = result
+                
                 # 감지 카운터 증가 (FPS 계산용)
                 self.detection_count += 1
                 current_time = time.time()
