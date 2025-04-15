@@ -231,15 +231,36 @@ const Analytics = ({ language }) => {
       
       console.log(`API에서 가져온 감지 수: ${detections.length}, 바운딩 박스 수: ${bbData.length}`);
       
-      // 조류 종류별 분포 계산
+      // 데이터가 너무 많은 경우 처리 방법 변경
+      // 조류 종류별 분포 계산 - 일반 for 루프 사용
       const speciesDistribution = {};
       
-      bbData.forEach(bb => {
-        if (!speciesDistribution[bb.class_name]) {
-          speciesDistribution[bb.class_name] = 0;
+      // 청크 단위로 처리하여 스택 오버플로우 방지
+      const processChunk = (array, start, chunkSize, processor) => {
+        const end = Math.min(start + chunkSize, array.length);
+        for (let i = start; i < end; i++) {
+          processor(array[i]);
         }
-        speciesDistribution[bb.class_name]++;
-      });
+        return end;
+      };
+      
+      // 메모리 효율적인 방법으로 바운딩 박스 데이터 처리
+      const CHUNK_SIZE = 10000; // 한 번에 처리할 항목 수
+      let currentIndex = 0;
+      
+      while (currentIndex < bbData.length) {
+        currentIndex = processChunk(bbData, currentIndex, CHUNK_SIZE, (bb) => {
+          if (!speciesDistribution[bb.class_name]) {
+            speciesDistribution[bb.class_name] = 0;
+          }
+          speciesDistribution[bb.class_name]++;
+        });
+        
+        // 비동기 처리 허용하여 UI 블로킹 방지
+        if (currentIndex < bbData.length) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
       
       // 분포 데이터 배열로 변환
       const distributionArray = Object.entries(speciesDistribution).map(([name, count]) => ({
@@ -247,56 +268,75 @@ const Analytics = ({ language }) => {
         count
       })).sort((a, b) => b.count - a.count); // 개수 기준 내림차순 정렬
       
-      // 바운딩 박스 통계 계산
-      const bbSizes = bbData.map(bb => {
-        const width = bb.bb_right - bb.bb_left;
-        const height = bb.bb_bottom - bb.bb_top;
-        return { width, height, area: width * height };
-      });
+      // 바운딩 박스 통계 계산 - 청크 단위로 처리
+      const bbSizes = { 
+        totalWidth: 0, 
+        totalHeight: 0, 
+        maxWidth: 0, 
+        maxHeight: 0,
+        count: 0
+      };
       
-      // 평균 및 최대 크기 계산
-      const avgSize = bbSizes.length > 0 
-        ? bbSizes.reduce((sum, item) => sum + item.width, 0) / bbSizes.length * 100
-        : 0;
+      currentIndex = 0;
+      while (currentIndex < bbData.length) {
+        currentIndex = processChunk(bbData, currentIndex, CHUNK_SIZE, (bb) => {
+          const width = bb.bb_right - bb.bb_left;
+          const height = bb.bb_bottom - bb.bb_top;
+          
+          bbSizes.totalWidth += width;
+          bbSizes.totalHeight += height;
+          bbSizes.maxWidth = Math.max(bbSizes.maxWidth, width);
+          bbSizes.maxHeight = Math.max(bbSizes.maxHeight, height);
+          bbSizes.count++;
+        });
         
-      const avgHeight = bbSizes.length > 0 
-        ? bbSizes.reduce((sum, item) => sum + item.height, 0) / bbSizes.length * 100
-        : 0;
-        
-      const maxSize = bbSizes.length > 0 
-        ? Math.max(...bbSizes.map(item => item.width)) * 100
-        : 0;
-        
-      const maxHeight = bbSizes.length > 0 
-        ? Math.max(...bbSizes.map(item => item.height)) * 100
-        : 0;
+        // 비동기 처리 허용
+        if (currentIndex < bbData.length) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
       
-      // 결과 데이터 구성
-      const result = {
-        totalDetections: detections.length, // 실제 API에서 받은 감지 수 사용
-        recentDetections: detections.map(detection => {
-          // 해당 감지의 바운딩 박스 찾기
-          const relatedBBs = bbData.filter(bb => bb.detection_id === detection.detection_id);
+      // 평균 계산
+      const avgSize = bbSizes.count > 0 ? (bbSizes.totalWidth / bbSizes.count) * 100 : 0;
+      const avgHeight = bbSizes.count > 0 ? (bbSizes.totalHeight / bbSizes.count) * 100 : 0;
+      const maxSize = bbSizes.maxWidth * 100;
+      const maxHeight = bbSizes.maxHeight * 100;
+      
+      // 감지 데이터 처리 - 메모리 효율적인 방식으로
+      // 필요한 경우 감지 데이터도 청크 단위로 처리
+      const processedDetections = [];
+      currentIndex = 0;
+      
+      // 감지 데이터의 크기가 적으면 모두 처리, 크면 최근 1000개만 처리
+      const detectionsToProcess = detections.length > 1000 
+        ? detections.slice(-1000) // 최근 1000개만
+        : detections;
+      
+      while (currentIndex < detectionsToProcess.length) {
+        currentIndex = processChunk(detectionsToProcess, currentIndex, 200, (detection) => {
+          // 해당 감지의 바운딩 박스 찾기 - 필터링 대신 맵 사용
+          const detectionBBMap = new Map();
+          
+          // 바운딩 박스 데이터에서 현재 detection_id와 일치하는 항목만 처리
+          for (let i = 0; i < bbData.length; i++) {
+            if (bbData[i].detection_id === detection.detection_id) {
+              const className = bbData[i].class_name;
+              detectionBBMap.set(className, (detectionBBMap.get(className) || 0) + 1);
+            }
+          }
           
           // 가장 많은 종류 찾기
-          const speciesCounts = {};
-          relatedBBs.forEach(bb => {
-            if (!speciesCounts[bb.class_name]) {
-              speciesCounts[bb.class_name] = 0;
-            }
-            speciesCounts[bb.class_name]++;
-          });
-          
           let dominantSpecies = '';
           let maxCount = 0;
-          for (const [species, count] of Object.entries(speciesCounts)) {
+          
+          detectionBBMap.forEach((count, species) => {
             if (count > maxCount) {
               maxCount = count;
               dominantSpecies = species;
             }
-          }
+          });
           
-          return {
+          processedDetections.push({
             id: detection.detection_id,
             timestamp: detection.detection_time,
             species: dominantSpecies,
@@ -305,8 +345,19 @@ const Analytics = ({ language }) => {
             objectCount: detection.bb_count,
             riskLevel: detection.bb_count > 3 ? '고위험' : '저위험',
             camera_id: detection.camera_id
-          };
-        }),
+          });
+        });
+        
+        // 비동기 처리 허용
+        if (currentIndex < detectionsToProcess.length) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
+      
+      // 결과 데이터 구성
+      const result = {
+        totalDetections: detections.length,
+        recentDetections: processedDetections,
         speciesDistribution: distributionArray,
         statistics: {
           count: bbData.length,

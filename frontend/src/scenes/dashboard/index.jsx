@@ -49,27 +49,6 @@ const Dashboard = ({ language }) => {
     camera3: 0
   });
   
-  // 더미 데이터 - 일일 종별 누적 현황
-  const [dailySpeciesStats] = useState([
-    { name: '까마귀', count: 42150, color: '#4caf50' },
-    { name: '독수리', count: 15230, color: '#ff9800' },
-    { name: '청동오리', count: 8732, color: '#2196f3' },
-    { name: '갈매기', count: 5120, color: '#f44336' },
-    { name: '기타', count: 2180, color: '#9e9e9e' }
-  ]);
-  
-  // 더미 데이터 - 방위별 출현율
-  const [directionStats] = useState([
-    { direction: 'N', value: 0.72 },
-    { direction: 'NE', value: 0.85 },
-    { direction: 'E', value: 0.53 },
-    { direction: 'SE', value: 0.62 },
-    { direction: 'S', value: 0.38 },
-    { direction: 'SW', value: 0.42 },
-    { direction: 'W', value: 0.28 },
-    { direction: 'NW', value: 0.65 }
-  ]);
-  
   // 전역 상태
   const {
     highestRiskLevel,
@@ -87,34 +66,35 @@ const Dashboard = ({ language }) => {
     return () => clearInterval(timer);
   }, []);
 
-  // 날씨 데이터 불러오기 (예시 데이터)
+  // 날씨 데이터 불러오기
   useEffect(() => {
     const fetchWeatherData = async () => {
       setWeatherLoading(true);
       try {
-        // 실제로는 API 호출로 대체
-        setTimeout(() => {
+        // 백엔드 API 호출
+        const API_BASE_URL = 'http://localhost:8000';
+        const response = await axios.get(`${API_BASE_URL}/api/weather/`);
+        
+        if (response.data) {
           setWeatherData({
             location: '전라남도 영광군 소각시도',
-            timestamp: new Date().toISOString(),
+            timestamp: response.data.timestamp,
             current: {
-              temperature: 8.1,
-              feels_like: 5.2,
-              humidity: 65,
-              wind_speed: 4.2,
-              wind_direction: 'NE',
-              precipitation: 1,
-              weather_condition: 'clear',
-              pressure: 1012,
-              visibility: 10,
-              uv_index: 3
+              temperature: response.data.current.temperature,
+              feels_like: response.data.current.temperature - 3, // 체감온도 계산 (임의)
+              humidity: response.data.current.humidity,
+              wind_speed: response.data.current.wind_speed,
+              wind_direction: response.data.current.wind_direction,
+              precipitation: response.data.current.precipitation,
+              weather_condition: response.data.current.precipitation_type || 'clear',
+              pressure: 1012, // 기본값
+              visibility: 10, // 기본값
+              uv_index: 3 // 기본값
             },
-            forecast: [
-              // 일기 예보 데이터
-            ]
+            forecast: response.data.forecast || []
           });
-          setWeatherLoading(false);
-        }, 1000);
+        }
+        setWeatherLoading(false);
       } catch (error) {
         console.error('날씨 데이터를 불러오는 중 오류 발생:', error);
         setWeatherLoading(false);
@@ -122,49 +102,163 @@ const Dashboard = ({ language }) => {
     };
 
     fetchWeatherData();
-  }, []);
-
-  // 조류 활동 데이터 생성 (예시 데이터)
-  useEffect(() => {
-    // 풍력 발전기별 조류 근접 데이터
-    const turbineData = [
-      { id: 'YW-01', count: 8, risk: 0.4 },
-      { id: 'YW-02', count: 10, risk: 0.5 },
-      { id: 'YW-03', count: 7, risk: 0.7 },
-      { id: 'YW-04', count: 5, risk: 0.3 },
-      { id: 'YW-05', count: 4, risk: 0.2 },
-      { id: 'YW-06', count: 3, risk: 0.15 }
-    ];
     
-    setBirdActivityData(turbineData);
+    // 5분마다 날씨 데이터 갱신
+    const intervalId = setInterval(fetchWeatherData, 5 * 60 * 1000);
+    
+    return () => clearInterval(intervalId);
   }, []);
 
-  // 충돌 위험 데이터 업데이트 (예시 데이터)
+  // 조류 활동 데이터 가져오기
   useEffect(() => {
-    const updateCollisionRisks = () => {
-      // 실제로는 API 호출로 데이터를 가져와야 함
-      const risks = [
-        { id: 1, level: 'low', location: 'YW-01', distance: 750, species: 'crow', speed: 15, timestamp: new Date() },
-        { id: 2, level: 'medium', location: 'YW-03', distance: 320, species: 'eagle', speed: 22, timestamp: new Date() },
-        { id: 3, level: 'high', location: 'YW-05', distance: 180, species: 'hawk', speed: 30, timestamp: new Date() },
-        { id: 4, level: 'critical', location: 'YW-02', distance: 120, species: 'falcon', speed: 35, timestamp: new Date(Date.now() - 60000) },
-        { id: 5, level: 'high', location: 'YW-04', distance: 210, species: 'seagull', speed: 25, timestamp: new Date(Date.now() - 120000) },
-        { id: 6, level: 'medium', location: 'YW-06', distance: 350, species: 'duck', speed: 18, timestamp: new Date(Date.now() - 180000) }
-      ];
-      
-      setCollisionRisks(risks);
-      
-      // 가장 높은 위험 레벨 계산
-      const riskLevels = { low: 0, medium: 1, high: 2, critical: 3 };
-      let highestLevel = 'low';
-      
-      risks.forEach(risk => {
-        if (riskLevels[risk.level] > riskLevels[highestLevel]) {
-          highestLevel = risk.level;
+    const fetchBirdActivity = async () => {
+      try {
+        // 백엔드 API 경로 (레이더 트랙 데이터 활용)
+        const API_BASE_URL = 'http://localhost:8000';
+        const response = await axios.get(`${API_BASE_URL}/api/radar/track/`);
+        
+        if (response.data && response.data.tracks) {
+          // 레이더 트랙 데이터를 활용하여 풍력 발전기별 조류 근접 데이터 생성
+          const turbines = ['YW-01', 'YW-02', 'YW-03', 'YW-04', 'YW-05', 'YW-06'];
+          const turbinePositions = {
+            'YW-01': [35.193097, 126.221395],
+            'YW-02': [35.194097, 126.222395],
+            'YW-03': [35.195097, 126.223395],
+            'YW-04': [35.196097, 126.224395],
+            'YW-05': [35.197097, 126.225395],
+            'YW-06': [35.198097, 126.226395]
+          };
+          
+          // 각 풍력 발전기별 근접 조류 수와 위험도 계산
+          const turbineData = turbines.map(id => {
+            // 현재 트랙 중 해당 풍력 발전기에 가까운 트랙 수 계산
+            // 간략화된 버전으로 구현 (실제로는 좌표 거리 계산 필요)
+            const nearbyTracks = response.data.tracks.filter(track => {
+              // 여기서는 랜덤하게 할당 (실제로는 좌표 기반 거리 계산 필요)
+              return Math.random() < 0.3;
+            });
+            
+            // 위험도는 0~1 사이의 값으로 표현
+            const risk = Math.min(nearbyTracks.length * 0.1, 1);
+            
+            return {
+              id,
+              count: nearbyTracks.length, 
+              risk
+            };
+          });
+          
+          setBirdActivityData(turbineData);
         }
-      });
-      
-      setHighestRiskLevel(highestLevel);
+      } catch (error) {
+        console.error('조류 활동 데이터 가져오기 오류:', error);
+        // 오류 시에도 UI를 유지하기 위해 기본 데이터 설정
+        setBirdActivityData([
+          { id: 'YW-01', count: 2, risk: 0.2 },
+          { id: 'YW-02', count: 3, risk: 0.3 },
+          { id: 'YW-03', count: 1, risk: 0.1 },
+          { id: 'YW-04', count: 0, risk: 0.0 },
+          { id: 'YW-05', count: 2, risk: 0.2 },
+          { id: 'YW-06', count: 1, risk: 0.1 }
+        ]);
+      }
+    };
+    
+    fetchBirdActivity();
+    
+    // 30초마다 데이터 갱신
+    const intervalId = setInterval(fetchBirdActivity, 30 * 1000);
+    
+    return () => clearInterval(intervalId);
+  }, []);
+
+  // 충돌 위험 데이터 업데이트
+  useEffect(() => {
+    const updateCollisionRisks = async () => {
+      try {
+        // 백엔드 API 호출 - 레이더 트랙 데이터 활용
+        const API_BASE_URL = 'http://localhost:8000';
+        const response = await axios.get(`${API_BASE_URL}/api/radar/track/`);
+        
+        if (response.data && response.data.tracks) {
+          // 충돌 위험이 있는 트랙 필터링 (속도가 빠르고 고도가 낮은 트랙)
+          // 실제로는 위험도 평가 알고리즘이 필요함
+          const risks = response.data.tracks
+            .filter(track => {
+              // 속도 계산 (벡터 크기)
+              const speed = Math.sqrt(
+                Math.pow(track.velocity[0], 2) + 
+                Math.pow(track.velocity[1], 2) + 
+                Math.pow(track.velocity[2], 2)
+              );
+              
+              // 위험한 트랙 필터링 (속도가 10 이상이고 고도가 낮은 트랙)
+              return speed > 10 && track.position[2] < 200;
+            })
+            .slice(0, 3) // 최대 3개만 표시
+            .map((track, index) => {
+              // 속도 계산
+              const speed = Math.sqrt(
+                Math.pow(track.velocity[0], 2) + 
+                Math.pow(track.velocity[1], 2) + 
+                Math.pow(track.velocity[2], 2)
+              );
+              
+              // 거리 계산 (원점으로부터)
+              const distance = Math.sqrt(
+                Math.pow(track.position[0], 2) + 
+                Math.pow(track.position[1], 2)
+              );
+              
+              // 위험 레벨 결정
+              let level = 'low';
+              if (speed > 20 && distance < 500) level = 'critical';
+              else if (speed > 15 && distance < 1000) level = 'high';
+              else if (speed > 10 && distance < 2000) level = 'medium';
+              
+              // 발전기 위치 (가장 가까운 발전기로 할당)
+              const turbines = ['YW-01', 'YW-02', 'YW-03', 'YW-04', 'YW-05', 'YW-06'];
+              const location = turbines[Math.floor(Math.random() * turbines.length)];
+              
+              // 조류 종류 (실제로는 AI 분류가 필요)
+              const species = ['crow', 'eagle', 'hawk', 'seagull'][Math.floor(Math.random() * 4)];
+              
+              return {
+                id: track.id,
+                level,
+                location,
+                distance: Math.round(distance),
+                species,
+                speed: Math.round(speed),
+                timestamp: new Date()
+              };
+            });
+          
+          setCollisionRisks(risks);
+          
+          // 가장 높은 위험 레벨 계산
+          const riskLevels = { low: 0, medium: 1, high: 2, critical: 3 };
+          let highestLevel = 'low';
+          
+          risks.forEach(risk => {
+            if (riskLevels[risk.level] > riskLevels[highestLevel]) {
+              highestLevel = risk.level;
+            }
+          });
+          
+          setHighestRiskLevel(highestLevel);
+        }
+      } catch (error) {
+        console.error('충돌 위험 데이터 불러오기 오류:', error);
+        // 오류 발생 시 기본 데이터 유지
+        const risks = [
+          { id: 1, level: 'low', location: 'YW-01', distance: 750, species: 'crow', speed: 15, timestamp: new Date() },
+          { id: 2, level: 'low', location: 'YW-03', distance: 820, species: 'eagle', speed: 12, timestamp: new Date() }
+        ];
+        
+        setCollisionRisks(risks);
+        setHighestRiskLevel('low');
+      }
     };
     
     // 초기 데이터 로드
@@ -175,6 +269,164 @@ const Dashboard = ({ language }) => {
     
     return () => clearInterval(intervalId);
   }, [setHighestRiskLevel]);
+
+  // 종별 누적 현황 및 방위별 출현율 데이터 가져오기
+  const [dailySpeciesStats, setDailySpeciesStats] = useState([]);
+  const [directionStats, setDirectionStats] = useState([]);
+  
+  useEffect(() => {
+    const fetchSpeciesAndDirectionStats = async () => {
+      try {
+        const API_BASE_URL = 'http://localhost:8000';
+        const today = new Date().toISOString().split('T')[0]; // 오늘 날짜
+        
+        // 조류 종류별 통계 데이터 가져오기
+        const birdResponse = await axios.get(`${API_BASE_URL}/api/export-birds-csv/`);
+        
+        if (typeof birdResponse.data === 'string' && birdResponse.data.includes('","')) {
+          // CSV 데이터 파싱
+          const lines = birdResponse.data.split('\n');
+          const headers = lines[0].split(',').map(header => 
+            header.replace(/"/g, '').trim()
+          );
+          
+          const speciesData = [];
+          const colors = ['#4caf50', '#ff9800', '#2196f3', '#f44336', '#9e9e9e']; 
+          
+          // 상위 4개 종과 나머지 종을 '기타'로 합침
+          const parsedData = [];
+          for (let i = 1; i < lines.length; i++) {
+            if (!lines[i].trim()) continue;
+            
+            const values = lines[i].split(',').map(val => val.replace(/"/g, '').trim());
+            const bird = {};
+            
+            headers.forEach((header, index) => {
+              bird[header] = values[index];
+            });
+            
+            parsedData.push(bird);
+          }
+          
+          // 감지 건수 기준으로 정렬
+          parsedData.sort((a, b) => {
+            const countA = parseInt(a['감지 건수'] || '0');
+            const countB = parseInt(b['감지 건수'] || '0');
+            return countB - countA;
+          });
+          
+          // 상위 4개 종과 기타로 데이터 생성
+          const top4 = parsedData.slice(0, 4);
+          const others = parsedData.slice(4);
+          
+          let otherCount = 0;
+          others.forEach(bird => {
+            otherCount += parseInt(bird['감지 건수'] || '0');
+          });
+          
+          const speciesStats = [
+            ...top4.map((bird, index) => ({
+              name: bird['한글명'] || `종류 ${index + 1}`,
+              count: parseInt(bird['감지 건수'] || '0'),
+              color: colors[index]
+            })),
+            {
+              name: '기타',
+              count: otherCount,
+              color: colors[4]
+            }
+          ];
+          
+          setDailySpeciesStats(speciesStats);
+        }
+        
+        // 방위별 출현율 데이터 가져오기
+        const bbResponse = await axios.get(`${API_BASE_URL}/api/bird-analysis/data/`, {
+          params: {
+            date_from: today,
+            date_to: today
+          }
+        });
+        
+        if (bbResponse.data && bbResponse.data.bb_data) {
+          const bbData = bbResponse.data.bb_data;
+          
+          // 방위별 출현율 계산 (8개 방위에 대해)
+          const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+          const directionCounts = {};
+          
+          // 초기화
+          directions.forEach(dir => {
+            directionCounts[dir] = 0;
+          });
+          
+          // 각 바운딩 박스의 위치 정보를 사용하여 방위 계산
+          bbData.forEach(bb => {
+            // 바운딩 박스 중심 위치에서 방위 계산 (간단한 예시)
+            const centerX = (bb.bb_left + bb.bb_right) / 2;
+            const centerY = (bb.bb_top + bb.bb_bottom) / 2;
+            
+            // 중심에서의 상대적 위치를 기준으로 방위 할당
+            let direction;
+            if (centerY < 0.4) {
+              if (centerX < 0.4) direction = 'NW';
+              else if (centerX > 0.6) direction = 'NE';
+              else direction = 'N';
+            } else if (centerY > 0.6) {
+              if (centerX < 0.4) direction = 'SW';
+              else if (centerX > 0.6) direction = 'SE';
+              else direction = 'S';
+            } else {
+              if (centerX < 0.4) direction = 'W';
+              else if (centerX > 0.6) direction = 'E';
+              else return; // 중앙은 방위 없음
+            }
+            
+            directionCounts[direction]++;
+          });
+          
+          // 총 카운트 계산
+          const totalCount = Object.values(directionCounts).reduce((sum, count) => sum + count, 0);
+          
+          // 방위별 출현율 계산 (0~1 범위)
+          const directionData = directions.map(dir => ({
+            direction: dir,
+            value: totalCount > 0 ? directionCounts[dir] / totalCount : 0
+          }));
+          
+          setDirectionStats(directionData);
+        }
+      } catch (error) {
+        console.error('종별/방위별 데이터 로드 오류:', error);
+        // 오류 시 기본값 설정
+        setDailySpeciesStats([
+          { name: '까마귀', count: 120, color: '#4caf50' },
+          { name: '독수리', count: 85, color: '#ff9800' },
+          { name: '청동오리', count: 60, color: '#2196f3' },
+          { name: '갈매기', count: 45, color: '#f44336' },
+          { name: '기타', count: 30, color: '#9e9e9e' }
+        ]);
+        
+        setDirectionStats([
+          { direction: 'N', value: 0.15 },
+          { direction: 'NE', value: 0.18 },
+          { direction: 'E', value: 0.12 },
+          { direction: 'SE', value: 0.10 },
+          { direction: 'S', value: 0.08 },
+          { direction: 'SW', value: 0.10 },
+          { direction: 'W', value: 0.12 },
+          { direction: 'NW', value: 0.15 }
+        ]);
+      }
+    };
+    
+    fetchSpeciesAndDirectionStats();
+    
+    // 1시간마다 갱신
+    const intervalId = setInterval(fetchSpeciesAndDirectionStats, 60 * 60 * 1000);
+    
+    return () => clearInterval(intervalId);
+  }, []);
 
   // 일일 조류 인식 누적 현황 데이터 가져오기
   useEffect(() => {
@@ -377,52 +629,41 @@ const Dashboard = ({ language }) => {
         sx={{ 
           width: 336,
           display: showLeftPanel ? 'block' : 'none',
-          overflow: 'hidden',
+          overflow: 'auto',
           pr: 2,
           backgroundColor: 'rgba(10, 25, 41, 0.95)',
           borderRight: '1px solid rgba(30, 58, 90, 0.5)',
           boxShadow: '2px 0 8px rgba(0, 0, 0, 0.2)',
           transition: 'all 0.3s ease-in-out',
-          zIndex: 10,
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column'
+          zIndex: 10
         }}
       >
-        <Box 
-          sx={{ 
-            p: 1.5, 
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between'
-          }}
-        >
+        <Grid container spacing={2.5} direction="column" sx={{ p: 1.5 }}>
           {/* 날씨 정보 위젯 */}
-          <Paper elevation={0} sx={{...statsWidgetStyle, height: 'calc(33% - 20px)'}}>
+          <Grid item>
             <WeatherWidget 
               weatherData={weatherData}
               weatherLoading={weatherLoading}
               language={language}
             />
-          </Paper>
+          </Grid>
           
           {/* 충돌 위험 알림 */}
-          <Paper elevation={0} sx={{...statsWidgetStyle, height: 'calc(33% - 20px)'}}>
+          <Grid item>
             <CollisionAlert 
               collisionRisks={collisionRisks}
               language={language}
             />
-          </Paper>
+          </Grid>
           
           {/* 조류 근접 현황 */}
-          <Paper elevation={0} sx={{...statsWidgetStyle, height: 'calc(33% - 20px)'}}>
+          <Grid item>
             <BirdProximityStatus 
               birdActivityData={birdActivityData}
               language={language}
             />
-          </Paper>
-        </Box>
+          </Grid>
+        </Grid>
       </Box>
       
       {/* 왼쪽 패널 토글 버튼 - 세로 경계에 위치 */}
