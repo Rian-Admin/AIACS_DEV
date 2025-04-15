@@ -172,7 +172,7 @@ class ObjectDetector:
                 time.sleep(0.1)
     
     def _detect_objects_internal(self, frame):
-        """내부적으로 사용되는 객체 감지 메서드"""
+        """내부적으로 사용되는 객체 감지 메서드 - 성능 최적화"""
         if frame is None or self.model is None:
             return None
             
@@ -183,8 +183,11 @@ class ObjectDetector:
             # 시작 시간 기록
             start_time = time.time()
             
-            # YOLO 모델 실행 - conf 임계값 적용
-            results = self.model(frame, conf=self.conf_threshold, verbose=False)
+            # YOLO 모델 실행 - conf 임계값 적용, 객체 수 제한만 적용
+            results = self.model(frame, 
+                               conf=self.conf_threshold,
+                               verbose=False,
+                               max_det=100)        # 최대 감지 객체 수 제한
             
             # 추론 시간 기록
             inference_time = (time.time() - start_time) * 1000  # 밀리초 단위

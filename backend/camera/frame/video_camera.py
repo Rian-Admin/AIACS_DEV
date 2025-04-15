@@ -33,7 +33,7 @@ class VideoCamera:
         self._last_results = None
         self._last_processed_result = None
         self._last_db_update = time.time()
-        self._db_update_interval = 5  # DB 업데이트 간격 (초)
+        self._db_update_interval = 30  # DB 업데이트 간격 (초) - 30초로 늘림
         self._capture_timing_stats = []
         
         # 마지막 유효 프레임 저장 변수 초기화
@@ -155,31 +155,23 @@ class VideoCamera:
             # 프로세스 시작 시간
             start_time = time.time()
             
-            # 현재 시간 기준으로 캐시된 프레임을 재사용할지 결정
-            current_time = time.time()
-            use_cached_frame = (current_time - self._last_frame_time < self._frame_cache_time) and self._last_valid_frame is not None
+            # 캐시된 프레임 사용 안함 - 항상 최신 프레임과 감지 결과 사용
+            # 프레임 및 감지 결과 가져오기
+            frame, latest_result = self.stream_handler.get_frame_with_detections()
             
-            # 너무 자주 호출되는 경우 캐시된 프레임 반환
-            if use_cached_frame and not higher_quality:
-                # 캐시된 프레임 사용 (복사본 사용하여 변경 방지)
-                frame = self._last_valid_frame.copy()
-            else:
-                # 프레임 및 감지 결과 가져오기
-                frame, latest_result = self.stream_handler.get_frame_with_detections()
-                
-                if frame is None:
-                    return self._create_empty_frame(f"카메라 {self.camera_number}: 프레임 없음")
-                
-                # 마지막 유효 프레임 저장 (디버깅을 위해)
-                self._last_valid_frame = frame.copy()
-                self._last_frame_time = current_time
-                
-                # 바운딩 박스 그리기 - 비동기 감지 결과 사용
-                if latest_result and hasattr(latest_result, 'boxes') and hasattr(latest_result.boxes, '__len__') and len(latest_result.boxes) > 0:
-                    try:
-                        frame = draw_detections(frame, latest_result, self.detector.model.names)
-                    except Exception as e:
-                        logger.error(f"바운딩 박스 그리기 오류: {e}")
+            if frame is None:
+                return self._create_empty_frame(f"카메라 {self.camera_number}: 프레임 없음")
+            
+            # 마지막 유효 프레임 저장 (디버깅을 위해)
+            self._last_valid_frame = frame.copy()
+            self._last_frame_time = time.time()
+            
+            # 바운딩 박스 그리기 - 최신 감지 결과 사용
+            if latest_result and hasattr(latest_result, 'boxes') and hasattr(latest_result.boxes, '__len__') and len(latest_result.boxes) > 0:
+                try:
+                    frame = draw_detections(frame, latest_result, self.detector.model.names)
+                except Exception as e:
+                    logger.error(f"바운딩 박스 그리기 오류: {e}")
             
             # 감지 FPS 표시 (추가)
             if hasattr(self.stream_handler, 'detection_fps'):
