@@ -13,7 +13,7 @@ const BirdProximityStatus = ({ birdActivityData, language }) => {
       }}
     >
       <Typography variant="h6" fontWeight="bold" sx={{ mb: 2 }}>
-        {translate('조류 근접 현황', 'Bird Proximity Status', language)}
+        {translate('조류 실시간 근접 현황', 'Bird Real-Time Proximity Status', language)}
       </Typography>
       
       <Box sx={{ height: 180, display: 'flex', flexDirection: 'column' }}>

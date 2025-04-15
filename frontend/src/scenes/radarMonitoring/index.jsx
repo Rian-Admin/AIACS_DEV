@@ -1,18 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Paper, Grid } from '@mui/material';
+import { Box, Typography, Paper, Grid, Alert, Button } from '@mui/material';
 import { translate } from '../../utils/i18n';
 import RadarControl from '../../components/RadarControl';
 import { radarEmulatorAPI } from '../../api';
 import CombinedRadarDisplay from '../../components/RadarControl/CombinedRadarDisplay';
+import useAppStore from '../../store/useAppStore';
+import { useNavigate } from 'react-router-dom';
 
 const RadarMonitoring = ({ language }) => {
+  const navigate = useNavigate();
+  const { radarEnabled } = useAppStore();
   const [plotData, setPlotData] = useState([]);
   const [trackData, setTrackData] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
   const [operationMode, setOperationMode] = useState('');
 
+  // 레이더 기능이 비활성화된 경우 데이터 폴링 중지
+  useEffect(() => {
+    if (!radarEnabled) {
+      setPlotData([]);
+      setTrackData([]);
+      setIsConnected(false);
+      setOperationMode('');
+    }
+  }, [radarEnabled]);
+
   // API 응답 구조를 확인하기 위한 로깅 추가
   useEffect(() => {
+    // 레이더 기능이 비활성화된 경우 API 호출 중지
+    if (!radarEnabled) return;
+    
     const fetchRadarData = async () => {
       try {
         // 시뮬레이션/실제 레이더 데이터 가져오기
@@ -74,7 +91,50 @@ const RadarMonitoring = ({ language }) => {
     const interval = setInterval(fetchRadarData, 1000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [radarEnabled]);
+
+  // 레이더 기능이 비활성화된 경우 접근 불가 메시지 표시
+  if (!radarEnabled) {
+    return (
+      <Box p={3} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '80vh' }}>
+        <Alert 
+          severity="info" 
+          sx={{ 
+            width: '100%', 
+            maxWidth: '600px', 
+            mb: 3,
+            backgroundColor: 'rgba(30, 136, 229, 0.1)',
+            border: '1px solid rgba(30, 136, 229, 0.3)'
+          }}
+        >
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            {translate('레이더 기능이 비활성화되었습니다', 'Radar Features are Disabled', language)}
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            {translate(
+              '이 기능을 사용하려면 설정에서 레이더 기능을 활성화해야 합니다.',
+              'To use this feature, you need to enable radar functionality in the settings.',
+              language
+            )}
+          </Typography>
+          <Button 
+            variant="outlined"
+            onClick={() => navigate('/settings')}
+            sx={{ 
+              color: '#90caf9', 
+              borderColor: '#90caf9', 
+              '&:hover': { 
+                backgroundColor: 'rgba(144, 202, 249, 0.08)',
+                borderColor: '#90caf9'
+              } 
+            }}
+          >
+            {translate('설정으로 이동', 'Go to Settings', language)}
+          </Button>
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <Box p={2}>

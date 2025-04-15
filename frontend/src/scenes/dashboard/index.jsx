@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import { Box, Grid, useTheme } from '@mui/material';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Box, Grid, useTheme, IconButton, Paper, Typography, Divider } from '@mui/material';
+import { ChevronLeft, ChevronRight } from '@mui/icons-material';
 import useAppStore from '../../store/useAppStore';
 
 // 분리된 컴포넌트 가져오기
@@ -11,6 +12,9 @@ import SystemStatus from './components/SystemStatus';
 import BirdStatistics from './components/BirdStatistics';
 import RecentEvents from './components/RecentEvents';
 import CameraModal from './components/CameraModal';
+import DailyStatsChart from './components/DailyStatsChart';
+import SpeciesStatsChart from './components/SpeciesStatsChart';
+import RadarDirectionChart from './components/RadarDirectionChart';
 
 /**
  * 대시보드 메인 컴포넌트
@@ -26,13 +30,44 @@ const Dashboard = ({ language }) => {
   const [weatherLoading, setWeatherLoading] = useState(true);
   const [collisionRisks, setCollisionRisks] = useState([]);
   const [birdActivityData, setBirdActivityData] = useState([]);
-  const [mapCenter, setMapCenter] = useState([37.243100, 126.652140]); // 소각시도 좌표
+  const [mapCenter, setMapCenter] = useState([35.193097, 126.221395]); // 소각시도 좌표
   const [showCameraModal, setShowCameraModal] = useState(false);
+  const [showLeftPanel, setShowLeftPanel] = useState(true); // 왼쪽 패널 표시 상태
+  const [showRightPanel, setShowRightPanel] = useState(true); // 오른쪽 패널 표시 상태
   const [cameraStatus, setCameraStatus] = useState({
     1: { online: true, error: false },
     2: { online: true, error: false },
     3: { online: true, error: false }
   });
+  
+  // 더미 데이터 - 일일 카메라별 누적 현황
+  const [dailyCameraStats] = useState({
+    total: 73412,
+    camera1: 15892,
+    camera2: 32450,
+    camera3: 25070
+  });
+  
+  // 더미 데이터 - 일일 종별 누적 현황
+  const [dailySpeciesStats] = useState([
+    { name: '까마귀', count: 42150, color: '#4caf50' },
+    { name: '독수리', count: 15230, color: '#ff9800' },
+    { name: '청동오리', count: 8732, color: '#2196f3' },
+    { name: '갈매기', count: 5120, color: '#f44336' },
+    { name: '기타', count: 2180, color: '#9e9e9e' }
+  ]);
+  
+  // 더미 데이터 - 방위별 출현율
+  const [directionStats] = useState([
+    { direction: 'N', value: 0.72 },
+    { direction: 'NE', value: 0.85 },
+    { direction: 'E', value: 0.53 },
+    { direction: 'SE', value: 0.62 },
+    { direction: 'S', value: 0.38 },
+    { direction: 'SW', value: 0.42 },
+    { direction: 'W', value: 0.28 },
+    { direction: 'NW', value: 0.65 }
+  ]);
   
   // 전역 상태
   const {
@@ -59,11 +94,11 @@ const Dashboard = ({ language }) => {
         // 실제로는 API 호출로 대체
         setTimeout(() => {
           setWeatherData({
-            location: '경기 화성시 고포리',
+            location: '전라남도 영광군 소각시도',
             timestamp: new Date().toISOString(),
             current: {
-              temperature: 13.5,
-              feels_like: 11.2,
+              temperature: 8.1,
+              feels_like: 5.2,
               humidity: 65,
               wind_speed: 4.2,
               wind_direction: 'NE',
@@ -172,70 +207,294 @@ const Dashboard = ({ language }) => {
     
     return points;
   };
+  
+  // 사이드바 토글 핸들러
+  const handleToggleLeftPanel = useCallback(() => {
+    setShowLeftPanel(prev => !prev);
+    
+    // 레이아웃 변경 후 맵 리사이징 및 센터링
+    setTimeout(() => {
+      if (mapRef.current && mapRef.current.leafletElement) {
+        mapRef.current.leafletElement.invalidateSize();
+      }
+    }, 300);
+  }, []);
+  
+  // 오른쪽 패널 토글 핸들러
+  const handleToggleRightPanel = useCallback(() => {
+    setShowRightPanel(prev => !prev);
+    
+    // 레이아웃 변경 후 맵 리사이징 및 센터링
+    setTimeout(() => {
+      if (mapRef.current && mapRef.current.leafletElement) {
+        mapRef.current.leafletElement.invalidateSize();
+      }
+    }, 300);
+  }, []);
+  
+  // 사이드바 상태 변경 시 맵 리사이징
+  useEffect(() => {
+    if (mapRef.current && mapRef.current.leafletElement) {
+      // 레이아웃 변경 후 맵 컨테이너 크기 재계산을 위해 약간의 지연 추가
+      const timer = setTimeout(() => {
+        // 현재 중심과 줌 레벨 저장
+        const currentCenter = mapRef.current.leafletElement.getCenter();
+        const currentZoom = mapRef.current.leafletElement.getZoom();
+        
+        // 맵 크기 재계산
+        mapRef.current.leafletElement.invalidateSize({ 
+          animate: true, 
+          pan: true 
+        });
+        
+        // 원래 중심과 줌 레벨로 설정
+        mapRef.current.leafletElement.setView(
+          currentCenter, 
+          currentZoom, 
+          { animate: true, duration: 0.5 }
+        );
+      }, 400);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [showLeftPanel, showRightPanel]);
+
+  // 통계 위젯 스타일
+  const statsWidgetStyle = {
+    backgroundColor: 'rgba(10, 25, 41, 0.95)',
+    borderRadius: 2,
+    border: '1px solid rgba(30, 58, 90, 0.8)',
+    p: 2,
+    mb: 2.5,
+    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)'
+  };
 
   return (
-    <Box sx={{ height: '100%' }}>
-      <Grid container spacing={2} sx={{ height: '100%' }}>
-        {/* 왼쪽 패널 */}
-        <Grid item xs={12} md={4} lg={3} xl={2.5}>
-          <Grid container spacing={2} direction="column">
-            {/* 날씨 정보 위젯 */}
-            <Grid item>
-              <WeatherWidget 
-                weatherData={weatherData}
-                weatherLoading={weatherLoading}
-                language={language}
-              />
-            </Grid>
-            
-            {/* 충돌 위험 알림 */}
-            <Grid item>
-              <CollisionAlert 
-                collisionRisks={collisionRisks}
-                language={language}
-              />
-            </Grid>
-            
-            {/* 조류 근접 현황 */}
-            <Grid item>
-              <BirdProximityStatus 
-                birdActivityData={birdActivityData}
-                language={language}
-              />
-            </Grid>
+    <Box sx={{ height: '100%', display: 'flex' }}>
+      {/* 왼쪽 패널 */}
+      <Box 
+        sx={{ 
+          width: 336,
+          display: showLeftPanel ? 'block' : 'none',
+          overflow: 'auto',
+          pr: 2,
+          backgroundColor: 'rgba(10, 25, 41, 0.95)',
+          borderRight: '1px solid rgba(30, 58, 90, 0.5)',
+          boxShadow: '2px 0 8px rgba(0, 0, 0, 0.2)',
+          transition: 'all 0.3s ease-in-out',
+          zIndex: 10
+        }}
+      >
+        <Grid container spacing={2.5} direction="column" sx={{ p: 1.5 }}>
+          {/* 날씨 정보 위젯 */}
+          <Grid item>
+            <WeatherWidget 
+              weatherData={weatherData}
+              weatherLoading={weatherLoading}
+              language={language}
+            />
+          </Grid>
+          
+          {/* 충돌 위험 알림 */}
+          <Grid item>
+            <CollisionAlert 
+              collisionRisks={collisionRisks}
+              language={language}
+            />
+          </Grid>
+          
+          {/* 조류 근접 현황 */}
+          <Grid item>
+            <BirdProximityStatus 
+              birdActivityData={birdActivityData}
+              language={language}
+            />
           </Grid>
         </Grid>
-        
-        {/* 중앙 패널 */}
-        <Grid item xs={12} md={8} lg={9} xl={9.5}>
-          <MapView
-            mapCenter={mapCenter}
-            mapRef={mapRef}
-            setShowCameraModal={setShowCameraModal}
-            createViewField={createViewField}
-            cameraStatus={cameraStatus}
-            language={language}
+      </Box>
+      
+      {/* 왼쪽 패널 토글 버튼 - 세로 경계에 위치 */}
+      <Box
+        sx={{
+          position: 'relative',
+          zIndex: 1100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '22px',
+        }}
+      >
+        <IconButton
+          onClick={handleToggleLeftPanel}
+          sx={{
+            position: 'absolute',
+            padding: 0,
+            minWidth: '22px',
+            width: '22px',
+            height: '80px',
+            borderRadius: '0 8px 8px 0',
+            background: 'linear-gradient(90deg, #1e3a5a 0%, #2c4f7c 100%)',
+            color: 'white',
+            '&:hover': {
+              background: 'linear-gradient(90deg, #254a75 0%, #3a6ca5 100%)',
+              boxShadow: '0 0 8px rgba(33, 150, 243, 0.5)'
+            },
+            boxShadow: '3px 0 6px rgba(0,0,0,0.25)',
+            left: 0,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderLeft: 'none',
+            transition: 'all 0.2s ease-in-out'
+          }}
+        >
+          {showLeftPanel ? 
+            <ChevronLeft sx={{ 
+              fontSize: '16px', 
+              filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.5))'
+            }} /> : 
+            <ChevronRight sx={{ 
+              fontSize: '16px',
+              filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.5))'
+            }} />
+          }
+        </IconButton>
+      </Box>
+      
+      {/* 중앙/메인 컨텐츠 영역 */}
+      <Box sx={{ 
+        flexGrow: 1, 
+        position: 'relative', 
+        height: '100%',
+        transition: 'all 0.3s ease-in-out'
+      }}>
+        {/* 지도 영역 */}
+        <MapView
+          mapCenter={mapCenter}
+          mapRef={mapRef}
+          setShowCameraModal={setShowCameraModal}
+          createViewField={createViewField}
+          cameraStatus={cameraStatus}
+          language={language}
+          isPanelOpen={showLeftPanel || showRightPanel}
+          leftPanelOpen={showLeftPanel}
+          rightPanelOpen={showRightPanel}
+        />
+      </Box>
+      
+      {/* 오른쪽 패널 토글 버튼 - 세로 경계에 위치 */}
+      <Box
+        sx={{
+          position: 'relative',
+          zIndex: 1100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '22px',
+        }}
+      >
+        <IconButton
+          onClick={handleToggleRightPanel}
+          sx={{
+            position: 'absolute',
+            padding: 0,
+            minWidth: '22px',
+            width: '22px',
+            height: '80px',
+            borderRadius: '8px 0 0 8px',
+            background: 'linear-gradient(90deg, #2c4f7c 0%, #1e3a5a 100%)',
+            color: 'white',
+            '&:hover': {
+              background: 'linear-gradient(90deg, #3a6ca5 0%, #254a75 100%)',
+              boxShadow: '0 0 8px rgba(33, 150, 243, 0.5)'
+            },
+            boxShadow: '-3px 0 6px rgba(0,0,0,0.25)',
+            right: 0,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRight: 'none',
+            transition: 'all 0.2s ease-in-out'
+          }}
+        >
+          {showRightPanel ? 
+            <ChevronRight sx={{ 
+              fontSize: '16px', 
+              filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.5))'
+            }} /> : 
+            <ChevronLeft sx={{ 
+              fontSize: '16px',
+              filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.5))'
+            }} />
+          }
+        </IconButton>
+      </Box>
+      
+      {/* 오른쪽 패널 */}
+      <Box 
+        sx={{ 
+          width: 300,
+          display: showRightPanel ? 'block' : 'none',
+          overflow: 'auto',
+          pl: 2,
+          pr: 1.5,
+          py: 1.5,
+          backgroundColor: 'rgba(10, 25, 41, 0.95)',
+          borderLeft: '1px solid rgba(30, 58, 90, 0.5)',
+          boxShadow: '-2px 0 8px rgba(0, 0, 0, 0.2)',
+          transition: 'all 0.3s ease-in-out',
+          zIndex: 10
+        }}
+      >
+        {/* 일일 누적 현황 위젯 */}
+        <Paper elevation={0} sx={statsWidgetStyle}>
+          <Typography variant="subtitle1" color="lightblue" gutterBottom fontWeight="bold">
+            조류 인식 일일 누적 현황
+          </Typography>
+          <Divider sx={{ borderColor: 'rgba(150, 200, 255, 0.15)', mb: 2 }} />
+          
+          <DailyStatsChart 
+            data={[
+              { label: '전체', value: dailyCameraStats.total, color: '#2196f3' },
+              { label: '카메라 1', value: dailyCameraStats.camera1, color: '#3E6D9C' },
+              { label: '카메라 2', value: dailyCameraStats.camera2, color: '#5E8C61' },
+              { label: '카메라 3', value: dailyCameraStats.camera3, color: '#AF7AB3' }
+            ]}
           />
-        </Grid>
+        </Paper>
         
-        {/* 오른쪽 패널 - 주석 처리됨
-        <Grid item xs={12} lg={3} xl={2.5} sx={{ display: { xs: 'none', lg: 'block' } }}>
-          <Grid container spacing={2} direction="column">
-            <Grid item>
-              <SystemStatus language={language} />
-            </Grid>
-            
-            <Grid item>
-              <BirdStatistics language={language} />
-            </Grid>
-            
-            <Grid item>
-              <RecentEvents language={language} />
-            </Grid>
-          </Grid>
-        </Grid>
-        */}
-      </Grid>
+        {/* 일일 종별 누적 현황 위젯 */}
+        <Paper elevation={0} sx={statsWidgetStyle}>
+          <Typography variant="subtitle1" color="lightblue" gutterBottom fontWeight="bold">
+            조류 종별 일일 누적 현황
+          </Typography>
+          <Divider sx={{ borderColor: 'rgba(150, 200, 255, 0.15)', mb: 2 }} />
+          
+          <SpeciesStatsChart 
+            data={dailySpeciesStats}
+          />
+        </Paper>
+        
+        {/* 방위별 출현율 위젯 */}
+        <Paper elevation={0} sx={statsWidgetStyle}>
+          <Typography variant="subtitle1" color="lightblue" gutterBottom fontWeight="bold">
+            방위별 출현율
+          </Typography>
+          <Divider sx={{ borderColor: 'rgba(150, 200, 255, 0.15)', mb: 2 }} />
+          
+          <RadarDirectionChart 
+            data={directionStats}
+          />
+        </Paper>
+      </Box>
 
       {/* 카메라 스트림 모달 */}
       <CameraModal

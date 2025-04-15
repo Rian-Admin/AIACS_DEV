@@ -85,7 +85,7 @@ def add_camera(request):
             
             # 카메라 매니저 캐시 초기화 (새 카메라가 바로 인식되도록)
             from ..frame.camera_manager import CameraManager
-            CameraManager()._load_cameras_from_db()
+            CameraManager.get_instance()._load_cameras_from_db()
             
             logger.info(f"카메라 추가됨: {camera.camera_id}")
             return JsonResponse({'status': 'success'})
@@ -146,7 +146,7 @@ def update_camera(request, camera_id):
             
             # 카메라 매니저 캐시 갱신 (변경사항이 바로 적용되도록)
             from ..frame.camera_manager import CameraManager
-            cm = CameraManager()
+            cm = CameraManager.get_instance()
             
             # URL이 변경된 경우 로그 출력
             if url_changed:
@@ -208,7 +208,7 @@ def delete_camera(request, camera_id):
                     # 카메라 매니저 캐시 초기화
                     try:
                         from ..frame.camera_manager import CameraManager
-                        cm = CameraManager()
+                        cm = CameraManager.get_instance()
                         cm._url_cache.clear()
                         cm._last_db_check = 0
                     except Exception as e:
@@ -230,7 +230,7 @@ def clear_camera_cache(request):
         try:
             # CameraManager 인스턴스를 가져와 캐시 비우기
             from ..frame.camera_manager import CameraManager
-            cm = CameraManager()
+            cm = CameraManager.get_instance()
             
             # 캐시 비우기
             cm._url_cache.clear()

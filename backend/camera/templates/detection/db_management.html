@@ -171,25 +171,20 @@
         </div>
     </div>
 
-    <!-- 일관된 탭 내비게이션 -->
-    <div class="container">
-        <ul class="nav nav-tabs">
-            <li class="nav-item">
-                <a class="nav-link" href="/" target="_top">메인 대시보드</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/camera-management/" target="_top">카메라 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link active" href="/db-management/" target="_top">데이터베이스 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/model-management/" target="_top">모델 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/speaker-management/" target="_top">스피커 관리</a>
-            </li>
-        </ul>
+    <!-- DB 관리 버튼 섹션 추가 -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="dashboard-card">
+                <div class="d-flex justify-content-end">
+                    <button id="exportDbCsv" class="btn btn-success me-2">
+                        <i class="fas fa-file-archive me-1"></i> 전체 DB ZIP 내보내기
+                    </button>
+                    <button id="clearDb" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#clearDbConfirmModal">
+                        <i class="fas fa-trash me-1"></i> DB 초기화
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- 테이블 선택 탭 -->
@@ -235,7 +230,10 @@
                         </select>
                     </div>
                     <div class="col-md-3 d-flex align-items-end">
-                        <button id="filterDetections" class="btn btn-primary w-100">필터링</button>
+                        <button id="filterDetections" class="btn btn-primary me-2">필터링</button>
+                        <button id="exportDetectionsCsv" class="btn btn-success btn-sm">
+                            <i class="fas fa-file-csv"></i> CSV
+                        </button>
                     </div>
                 </div>
             </div>
@@ -309,7 +307,10 @@
                         </select>
                     </div>
                     <div class="col-md-3 d-flex align-items-end">
-                        <button id="filterBirdAnalysis" class="btn btn-primary w-100">필터링</button>
+                        <button id="filterBirdAnalysis" class="btn btn-primary me-2">필터링</button>
+                        <button id="exportBirdAnalysisCsv" class="btn btn-success btn-sm">
+                            <i class="fas fa-file-csv"></i> CSV
+                        </button>
                     </div>
                 </div>
             </div>
@@ -419,6 +420,11 @@
 
         <!-- 카메라 탭 -->
         <div class="tab-pane fade" id="cameras" role="tabpanel" aria-labelledby="cameras-tab">
+            <div class="d-flex justify-content-end mb-3">
+                <button id="exportCamerasCsv" class="btn btn-success btn-sm">
+                    <i class="fas fa-file-csv"></i> CSV 다운로드
+                </button>
+            </div>
             <div class="table-container">
                 <table class="table table-striped table-hover">
                     <thead>
@@ -455,6 +461,11 @@
 
         <!-- 조류 클래스 탭 -->
         <div class="tab-pane fade" id="birds" role="tabpanel" aria-labelledby="birds-tab">
+            <div class="d-flex justify-content-end mb-3">
+                <button id="exportBirdsCsv" class="btn btn-success btn-sm">
+                    <i class="fas fa-file-csv"></i> CSV 다운로드
+                </button>
+            </div>
             <div class="table-container">
                 <table class="table table-striped table-hover">
                     <thead>
@@ -487,6 +498,11 @@
 
         <!-- 퇴치 기록 탭 -->
         <div class="tab-pane fade" id="deterrents" role="tabpanel" aria-labelledby="deterrents-tab">
+            <div class="d-flex justify-content-end mb-3">
+                <button id="exportDeterrentsCsv" class="btn btn-success btn-sm">
+                    <i class="fas fa-file-csv"></i> CSV 다운로드
+                </button>
+            </div>
             <div class="table-container">
                 <table class="table table-striped table-hover">
                     <thead>
@@ -528,10 +544,45 @@
         </div>
     </div>
 </div>
+
+<!-- DB 초기화 확인 모달 수정 -->
+<div class="modal fade" id="clearDbConfirmModal" tabindex="-1" aria-labelledby="clearDbConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="clearDbTitle">데이터베이스 초기화 확인</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-danger fw-bold">경고: 이 작업은 되돌릴 수 없습니다!</p>
+                <p id="clearDbMessage">데이터베이스의 모든 기록이 삭제됩니다. 계속하시겠습니까?</p>
+                <div class="mb-3">
+                    <label for="confirmText" class="form-label">확인을 위해 "초기화"를 입력하세요:</label>
+                    <input type="text" class="form-control" id="confirmText">
+                    <input type="hidden" id="clearDbType" value="all">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-danger" id="confirmClearDb" disabled>초기화</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    // CSRF 토큰 가져오는 함수 추가
+    function getCsrfToken() {
+        const cookieValue = document.cookie
+            .split('; ')
+            .find(row => row.startsWith('csrftoken='))
+            ?.split('=')[1];
+        
+        return cookieValue || '';
+    }
+    
     document.addEventListener('DOMContentLoaded', function() {
         // 탭 링크에 이벤트 리스너 추가
         document.querySelectorAll('.nav-link').forEach(link => {
@@ -554,7 +605,7 @@
             const dateTo = document.getElementById('detectionDateTo').value;
             const cameraId = document.getElementById('detectionCamera').value;
             
-            let url = `/api/detections-filtered/?`;
+            let url = `/api/detections/filtered/?`;
             if (dateFrom) url += `date_from=${dateFrom}&`;
             if (dateTo) url += `date_to=${dateTo}&`;
             if (cameraId) url += `camera_id=${cameraId}&`;
@@ -683,7 +734,7 @@
                     const dateTo = document.getElementById('detectionDateTo').value;
                     const cameraId = document.getElementById('detectionCamera').value;
                     
-                    let url = `/api/detections-filtered/?page=${page}&per_page=100&`;
+                    let url = `/api/detections/filtered/?page=${page}&per_page=100&`;
                     if (dateFrom) url += `date_from=${dateFrom}&`;
                     if (dateTo) url += `date_to=${dateTo}&`;
                     if (cameraId) url += `camera_id=${cameraId}&`;
@@ -775,7 +826,7 @@
             const dateTo = document.getElementById('birdAnalysisDateTo').value;
             const birdClass = document.getElementById('birdAnalysisBirdClass').value;
             
-            let url = `/api/bird-analysis/?`;
+            let url = `/api/bird-analysis/data/?`;
             if (dateFrom) url += `date_from=${dateFrom}&`;
             if (dateTo) url += `date_to=${dateTo}&`;
             if (birdClass) url += `bird_class=${birdClass}&`;
@@ -945,7 +996,7 @@
         
         // 페이지 로드 시 초기 데이터 로드
         // 감지 기록 탭 데이터 로드
-        fetch(`/api/detections-filtered/?per_page=100`)
+        fetch(`/api/detections/filtered/?per_page=100`)
             .then(response => response.json())
             .then(data => {
                 // 페이지네이션 업데이트
@@ -959,7 +1010,7 @@
             });
             
         // 조류 분석 탭 초기 데이터 로드
-        fetch(`/api/bird-analysis/`)
+        fetch(`/api/bird-analysis/data/`)
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success' && data.bb_data && data.bb_data.length > 0) {
@@ -1115,6 +1166,350 @@
         
         // 초기 바운딩 박스 토글 버튼 설정
         setupBBInfoToggleButtons();
+
+        // 감지 기록 CSV 내보내기 기능 개선
+        document.getElementById('exportDetectionsCsv').addEventListener('click', function() {
+            const dateFrom = document.getElementById('detectionDateFrom').value;
+            const dateTo = document.getElementById('detectionDateTo').value;
+            const cameraId = document.getElementById('detectionCamera').value;
+            
+            // 현재 감지 기록 탭에서 적용된 필터링 조건을 URL에 포함
+            let url = `/api/export-detections-csv/?`;
+            if (dateFrom) url += `date_from=${dateFrom}&`;
+            if (dateTo) url += `date_to=${dateTo}&`;
+            if (cameraId) url += `camera_id=${cameraId}&`;
+            
+            // 사용자에게 다운로드 진행 상황 알림
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 다운로드 중...';
+            
+            // 서버에 CSV 다운로드 요청
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('CSV 다운로드 실패');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    // 다운로드 링크 생성 및 클릭
+                    const downloadUrl = URL.createObjectURL(blob);
+                    const filename = `detections_${new Date().toISOString().slice(0,10)}.csv`;
+                    
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    // 버튼 상태 복원
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-file-csv"></i> CSV';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('CSV 다운로드 중 오류가 발생했습니다.');
+                    
+                    // 버튼 상태 복원
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-file-csv"></i> CSV';
+                });
+        });
+
+        // 조류 분석 CSV 내보내기 기능 개선
+        document.getElementById('exportBirdAnalysisCsv').addEventListener('click', function() {
+            const dateFrom = document.getElementById('birdAnalysisDateFrom').value;
+            const dateTo = document.getElementById('birdAnalysisDateTo').value;
+            const birdClass = document.getElementById('birdAnalysisBirdClass').value;
+            
+            // 현재 조류 분석 탭에서 적용된 필터링 조건을 URL에 포함
+            let url = `/api/export-bird-analysis-csv/?`;
+            if (dateFrom) url += `date_from=${dateFrom}&`;
+            if (dateTo) url += `date_to=${dateTo}&`;
+            if (birdClass) url += `bird_class=${birdClass}&`;
+            
+            // 사용자에게 다운로드 진행 상황 알림
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 다운로드 중...';
+            
+            // 서버에 CSV 다운로드 요청
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('CSV 다운로드 실패');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    // 다운로드 링크 생성 및 클릭
+                    const downloadUrl = URL.createObjectURL(blob);
+                    const filename = `bird_analysis_${new Date().toISOString().slice(0,10)}.csv`;
+                    
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    // 버튼 상태 복원
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-file-csv"></i> CSV';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('CSV 다운로드 중 오류가 발생했습니다.');
+                    
+                    // 버튼 상태 복원
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-file-csv"></i> CSV';
+                });
+        });
+
+        // DB 초기화 기능을 감지 기록과 조류 분석으로 구분
+        document.getElementById('clearDb').addEventListener('click', function() {
+            // 모달 열기 전에 사용자가 현재 보고 있는 탭을 확인
+            const activeTabId = document.querySelector('.nav-tabs .nav-link.active').getAttribute('id');
+            
+            // 초기화 타입을 저장하고 모달에 정보 업데이트
+            if (activeTabId === 'detections-tab') {
+                document.getElementById('clearDbType').value = 'detections';
+                document.getElementById('clearDbTitle').textContent = '감지 기록 초기화 확인';
+                document.getElementById('clearDbMessage').textContent = '감지 기록 데이터가 모두 삭제됩니다. 계속하시겠습니까?';
+            } else if (activeTabId === 'bird-analysis-tab') {
+                document.getElementById('clearDbType').value = 'bird_analysis';
+                document.getElementById('clearDbTitle').textContent = '조류 분석 초기화 확인';
+                document.getElementById('clearDbMessage').textContent = '조류 분석 데이터가 모두 삭제됩니다. 계속하시겠습니까?';
+            } else {
+                document.getElementById('clearDbType').value = 'all';
+                document.getElementById('clearDbTitle').textContent = '데이터베이스 초기화 확인';
+                document.getElementById('clearDbMessage').textContent = '데이터베이스의 모든 기록이 삭제됩니다. 계속하시겠습니까?';
+            }
+        });
+
+        // DB 초기화 실행 시 선택된 타입에 따라 처리
+        document.getElementById('confirmClearDb').addEventListener('click', function() {
+            const modal = document.getElementById('clearDbConfirmModal');
+            const bsModal = bootstrap.Modal.getInstance(modal);
+            const dbType = document.getElementById('clearDbType').value;
+            
+            // 로딩 상태 표시
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 초기화 중...';
+            this.disabled = true;
+            
+            fetch('/api/clear-database/', { 
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ db_type: dbType })
+            })
+            .then(response => response.json())
+            .then(data => {
+                bsModal.hide();
+                
+                if (data.status === 'success') {
+                    // 성공 메시지 표시
+                    alert('데이터가 성공적으로 초기화되었습니다.');
+                    // 페이지 새로고침
+                    window.location.reload();
+                } else {
+                    // 오류 메시지 표시
+                    alert('데이터 초기화 중 오류가 발생했습니다: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('데이터 초기화 요청 중 오류가 발생했습니다.');
+                this.innerHTML = '초기화';
+                this.disabled = false;
+            });
+        });
+
+        // 전체 DB CSV 내보내기 기능 추가
+        document.getElementById('exportDbCsv').addEventListener('click', function() {
+            // 사용자에게 다운로드 진행 상황 알림
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 다운로드 중...';
+            
+            // 서버에 CSV 다운로드 요청
+            fetch('/api/export-database-csv/')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('다운로드 실패');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    // 다운로드 링크 생성 및 클릭
+                    const downloadUrl = URL.createObjectURL(blob);
+                    const filename = `database_${new Date().toISOString().slice(0,10)}.zip`;
+                    
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    // 버튼 상태 복원
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-file-archive me-1"></i> 전체 DB ZIP 내보내기';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('다운로드 중 오류가 발생했습니다.');
+                    
+                    // 버튼 상태 복원
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-file-archive me-1"></i> 전체 DB ZIP 내보내기';
+                });
+        });
+
+        // 카메라 CSV 내보내기 기능 개선
+        document.getElementById('exportCamerasCsv').addEventListener('click', function() {
+            // 사용자에게 다운로드 진행 상황 알림
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 다운로드 중...';
+            
+            // 서버에 CSV 다운로드 요청
+            fetch('/api/export-cameras-csv/')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('CSV 다운로드 실패');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    // 다운로드 링크 생성 및 클릭
+                    const downloadUrl = URL.createObjectURL(blob);
+                    const filename = `cameras_${new Date().toISOString().slice(0,10)}.csv`;
+                    
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    // 버튼 상태 복원
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-file-csv"></i> CSV 다운로드';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('CSV 다운로드 중 오류가 발생했습니다.');
+                    
+                    // 버튼 상태 복원
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-file-csv"></i> CSV 다운로드';
+                });
+        });
+
+        // 조류 클래스 CSV 내보내기 기능 개선
+        document.getElementById('exportBirdsCsv').addEventListener('click', function() {
+            // 사용자에게 다운로드 진행 상황 알림
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 다운로드 중...';
+            
+            // 서버에 CSV 다운로드 요청
+            fetch('/api/export-birds-csv/')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('CSV 다운로드 실패');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    // 다운로드 링크 생성 및 클릭
+                    const downloadUrl = URL.createObjectURL(blob);
+                    const filename = `birds_${new Date().toISOString().slice(0,10)}.csv`;
+                    
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    // 버튼 상태 복원
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-file-csv"></i> CSV 다운로드';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('CSV 다운로드 중 오류가 발생했습니다.');
+                    
+                    // 버튼 상태 복원
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-file-csv"></i> CSV 다운로드';
+                });
+        });
+
+        // 퇴치 기록 CSV 내보내기 기능 개선
+        document.getElementById('exportDeterrentsCsv').addEventListener('click', function() {
+            // 사용자에게 다운로드 진행 상황 알림
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 다운로드 중...';
+            
+            // 서버에 CSV 다운로드 요청
+            fetch('/api/export-deterrents-csv/')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('CSV 다운로드 실패');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    // 다운로드 링크 생성 및 클릭
+                    const downloadUrl = URL.createObjectURL(blob);
+                    const filename = `deterrents_${new Date().toISOString().slice(0,10)}.csv`;
+                    
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    // 버튼 상태 복원
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-file-csv"></i> CSV 다운로드';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('CSV 다운로드 중 오류가 발생했습니다.');
+                    
+                    // 버튼 상태 복원
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-file-csv"></i> CSV 다운로드';
+                });
+        });
+
+        // DB 초기화 확인 텍스트 검증 함수 - 전역 함수로 선언
+        function setupConfirmTextValidation() {
+            const confirmText = document.getElementById('confirmText');
+            const confirmClearDbBtn = document.getElementById('confirmClearDb');
+            
+            confirmText.addEventListener('input', function() {
+                if (this.value === '초기화') {
+                    confirmClearDbBtn.removeAttribute('disabled');
+                } else {
+                    confirmClearDbBtn.setAttribute('disabled', 'disabled');
+                }
+            });
+            
+            // 모달이 표시될 때마다 입력 필드 초기화
+            document.getElementById('clearDbConfirmModal').addEventListener('shown.bs.modal', function() {
+                confirmText.value = '';
+                confirmClearDbBtn.setAttribute('disabled', 'disabled');
+            });
+        }
+
+        // 페이지 로드 시 초기화 함수 호출
+        setupConfirmTextValidation();
     });
     
     // 바운딩 박스 정보 토글 함수 - 인라인 이벤트 핸들러용
@@ -1141,8 +1536,8 @@
             if (bbInfoContainer.innerHTML === '') {
                 loadingSpinner.style.display = 'block';
                 
-                // 바운딩 박스 정보 로드
-                fetch(`/api/detection-bb-info/${detectionId}/`)
+                // 바운딩 박스 정보 로드 - URL 수정
+                fetch(`/api/detection/bb-info/${detectionId}/`)
                     .then(response => response.json())
                     .then(data => {
                         loadingSpinner.style.display = 'none';

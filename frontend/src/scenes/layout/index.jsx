@@ -81,8 +81,8 @@ const Layout = ({ language, changeLanguage, handleLogout }) => {
           display: 'flex', 
           flexDirection: 'column', 
           overflow: 'hidden',
-          marginLeft: isSidebarOpen ? '220px' : 0,
-          width: isSidebarOpen ? 'calc(100% - 220px)' : '100%',
+          marginLeft: isSidebarOpen ? '220px' : '60px',
+          width: isSidebarOpen ? 'calc(100% - 220px)' : 'calc(100% - 60px)',
           transition: (theme) => theme.transitions.create(['margin', 'width'], {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.leavingScreen,
@@ -112,39 +112,6 @@ const Layout = ({ language, changeLanguage, handleLogout }) => {
           minHeight: 0
         }}>
           <Outlet />
-        </Box>
-        
-        {/* 하단 상태 표시줄 */}
-        <Box
-          sx={{
-            height: '28px',
-            backgroundColor: '#071525',
-            borderTop: '1px solid #1e3a5a',
-            display: 'flex',
-            alignItems: 'center',
-            px: 2,
-            fontSize: '12px',
-            color: '#90caf9'
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Typography variant="caption">
-              {translate('CPU: ', 'CPU: ', language)}35%
-            </Typography>
-            <Typography variant="caption">
-              {translate('메모리: ', 'Memory: ', language)}45%
-            </Typography>
-            <Typography variant="caption">
-              {translate('디스크: ', 'Disk: ', language)}28%
-            </Typography>
-            <Typography variant="caption">
-              {translate('네트워크: ', 'Network: ', language)}42%
-            </Typography>
-          </Box>
-          <Box sx={{ flexGrow: 1 }} />
-          <Typography variant="caption">
-            {translate('업타임: ', 'Uptime: ', language)}3h 45m
-          </Typography>
         </Box>
       </Box>
     </Box>

@@ -399,8 +399,7 @@ const CameraMonitoring = ({ language = 'ko' }) => {
 
   // Render camera grid based on selected layout
   const renderCameraGrid = () => {
-    // 모든 레이아웃에서 항상 한 대의 카메라만 표시하도록 함
-    if (activeCameras.length > 0) {
+    if (layout === '1x1' && activeCameras.length > 0) {
       const cameraId = activeCameras[0];
       const camera = cameras.find(c => c.id === cameraId);
       
@@ -409,22 +408,106 @@ const CameraMonitoring = ({ language = 'ko' }) => {
           {camera ? renderCameraBox(camera, 0, 12) : renderEmptyBox()}
         </Box>
       );
-    } else {
+    }
+    
+    if (layout === '1+3') {
       // 활성 카메라가 없는 경우 메시지 표시
+      if (activeCameras.length === 0) {
+        return (
+          <Box sx={{ 
+            height: 'calc(100vh - 180px)', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            color: '#aaa'
+          }}>
+            <Typography variant="h6">
+              {translate('카메라를 선택하세요', 'Select a camera', language)}
+            </Typography>
+          </Box>
+        );
+      }
+
+      // 왼쪽 큰 카메라용 객체 가져오기
+      const mainCameraId = activeCameras[0];
+      const mainCamera = cameras.find(c => c.id === mainCameraId);
+      
+      console.log("1+3 레이아웃 렌더링:", { 
+        activeCameras, 
+        mainCameraId, 
+        mainCamera: mainCamera ? 'found' : 'not found'
+      });
+      
       return (
-        <Box sx={{ 
-          height: 'calc(100vh - 180px)', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          color: '#aaa'
-        }}>
-          <Typography variant="h6">
-            {translate('카메라를 선택하세요', 'Select a camera', language)}
-          </Typography>
-        </Box>
+        <Grid container spacing={1} sx={{ height: 'calc(100vh - 180px)', maxHeight: 'calc(100vh - 180px)', p: 1, overflow: 'hidden' }}>
+          {/* 왼쪽 큰 카메라 영역 */}
+          <Grid item xs={8} sx={{ 
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            {mainCamera ? (
+              renderCameraBox(mainCamera, 0, 8)
+            ) : (
+              renderEmptyBox()
+            )}
+          </Grid>
+          
+          {/* 오른쪽 작은 카메라 영역 */}
+          <Grid item xs={4} sx={{ height: '100%' }}>
+            <Grid container spacing={1} direction="column" sx={{ height: '100%' }}>
+              {/* 첫 번째 작은 카메라 */}
+              <Grid item xs={4} sx={{ height: '33.33%' }}>
+                {activeCameras.length > 1 && (
+                  (() => {
+                    const camera = cameras.find(c => c.id === activeCameras[1]);
+                    return camera ? renderCameraBox(camera, 1, 4) : renderEmptyBox();
+                  })()
+                )}
+                {activeCameras.length <= 1 && renderEmptyBox()}
+              </Grid>
+              
+              {/* 두 번째 작은 카메라 */}
+              <Grid item xs={4} sx={{ height: '33.33%' }}>
+                {activeCameras.length > 2 && (
+                  (() => {
+                    const camera = cameras.find(c => c.id === activeCameras[2]);
+                    return camera ? renderCameraBox(camera, 2, 4) : renderEmptyBox();
+                  })()
+                )}
+                {activeCameras.length <= 2 && renderEmptyBox()}
+              </Grid>
+              
+              {/* 세 번째 작은 카메라 */}
+              <Grid item xs={4} sx={{ height: '33.33%' }}>
+                {activeCameras.length > 3 && (
+                  (() => {
+                    const camera = cameras.find(c => c.id === activeCameras[3]);
+                    return camera ? renderCameraBox(camera, 3, 4) : renderEmptyBox();
+                  })()
+                )}
+                {activeCameras.length <= 3 && renderEmptyBox()}
+              </Grid>
+            </Grid>
+          </Grid>
+        </Grid>
       );
     }
+    
+    // 2x2 grid (default)
+    return (
+      <Grid container spacing={1} sx={{ height: 'calc(100vh - 180px)', maxHeight: 'calc(100vh - 180px)', p: 1, overflow: 'hidden' }}>
+        {[0, 1, 2, 3].map((index) => (
+          <Grid item xs={6} key={index} sx={{ height: '50%', maxHeight: '50%', overflow: 'hidden' }}>
+            {activeCameras[index] && cameras.find(c => c.id === activeCameras[index])
+              ? renderCameraBox(cameras.find(c => c.id === activeCameras[index]), index, 6) 
+              : renderEmptyBox()
+            }
+          </Grid>
+        ))}
+      </Grid>
+    );
   };
   
   // Render empty camera box

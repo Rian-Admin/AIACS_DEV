@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import { SnackbarProvider } from 'notistack';
 import { ColorModeContext, useMode } from './theme/index';
+import useAppStore from './store/useAppStore';
 
 // 씬 임포트
 import Layout from './scenes/layout';
@@ -21,6 +22,7 @@ function App() {
   const [theme, colorMode] = useMode();
   const [language, setLanguage] = useState('ko'); // 'ko': 한국어, 'en': 영어, 'id': 인도네시아어
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { radarEnabled, weatherEnabled } = useAppStore();
 
   // 언어 설정 유지
   useEffect(() => {
@@ -72,8 +74,14 @@ function App() {
                 <Route path="/" element={<Dashboard language={language} />} />
                 <Route path="/camera" element={<CameraMonitoring language={language} />} />
                 <Route path="/video-analysis" element={<VideoAnalysis language={language} />} />
-                <Route path="/radar" element={<RadarMonitoring language={language} />} />
-                <Route path="/weather" element={<WeatherData language={language} />} />
+                <Route 
+                  path="/radar" 
+                  element={radarEnabled ? <RadarMonitoring language={language} /> : <Navigate to="/settings" replace />} 
+                />
+                <Route 
+                  path="/weather" 
+                  element={weatherEnabled ? <WeatherData language={language} /> : <Navigate to="/settings" replace />} 
+                />
                 <Route path="/analytics" element={<Analytics language={language} />} />
                 <Route path="/alerts" element={<Alerts language={language} />} />
                 <Route path="/defense-control" element={<DefenseControl language={language} />} />

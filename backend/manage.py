@@ -13,8 +13,7 @@ if __name__ == '__main__':
     # 로그 파일 생성, w+로 파일을 열어 기존 내용 삭제
     if not os.path.exists('logs'):
         os.makedirs('logs')
-    # stderr 리디렉션 임시 비활성화 (디버깅용)
-    # sys.stderr = open('logs/stderr.log', 'w+')
+    sys.stderr = open('logs/stderr.log', 'w+')
 
 def main():
     """Run administrative tasks."""

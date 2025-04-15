@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -27,6 +27,7 @@ import CombinedRadarDisplay from '../../../components/RadarControl/CombinedRadar
 import CameraStream from '../../../components/CameraStream';
 import axios from 'axios';
 import { styled } from '@mui/material/styles';
+import useAppStore from '../../../store/useAppStore';
 
 // Leaflet 아이콘 마커 깨짐 방지
 delete L.Icon.Default.prototype._getIconUrl;
@@ -100,9 +101,12 @@ function createViewField(center, direction, angle, distance) {
  *  - setShowCameraModal: 카메라 모달 표시/숨김 함수 (필요 시)
  *  - cameraStatus: 카메라별 상태 (오프라인/온라인 등)
  *  - language: 다국어 코드
+ *  - isPanelOpen: 패널 열림 상태
+ *  - leftPanelOpen: 왼쪽 패널 열림 상태
+ *  - rightPanelOpen: 오른쪽 패널 열림 상태
  */
 const MapView = ({
-  mapCenter = [35.192962, 126.221627],
+  mapCenter = [35.193097, 126.221395],
   mapRef = null,
   setShowCameraModal = () => {},
   cameraStatus = {
@@ -110,13 +114,26 @@ const MapView = ({
     2: { error: false },
     3: { error: false }
   },
-  language = 'ko'
+  language = 'ko',
+  isPanelOpen = true,
+  leftPanelOpen = true,
+  rightPanelOpen = true
 }) => {
   // ------ 공통 상태들 ------
   // 내부 mapRef 생성 (외부에서 전달되지 않은 경우 사용)
   const internalMapRef = useRef(null);
   // 실제 사용할 ref (외부에서 전달된 것 또는 내부에서 생성한 것)
   const actualMapRef = mapRef || internalMapRef;
+  
+  // 전역 상태 가져오기
+  const { radarEnabled } = useAppStore();
+  
+  // 마지막으로 알려진 맵 객체
+  const mapInstanceRef = useRef(null);
+  
+  // 패널 상태 변경 추적
+  const prevLeftPanelOpen = useRef(leftPanelOpen);
+  const prevRightPanelOpen = useRef(rightPanelOpen);
   
   // 탭 상태
   const [currentTab, setCurrentTab] = useState(0);
@@ -126,6 +143,74 @@ const MapView = ({
   const [showCameraOverlay, setShowCameraOverlay] = useState(true);
   // 컴포넌트 마운트 상태 추적
   const isMountedRef = useRef(true);
+
+  // 패널 상태 변경 시 맵 컨테이너 크기 재조정
+  useEffect(() => {
+    if (mapInstanceRef.current) {
+      // 패널 상태가 실제로 변경되었는지 확인
+      const leftChanged = prevLeftPanelOpen.current !== leftPanelOpen;
+      const rightChanged = prevRightPanelOpen.current !== rightPanelOpen;
+      
+      if (leftChanged || rightChanged) {
+        // 현재 중심 및 줌 레벨 저장
+        const currentCenter = mapInstanceRef.current.getCenter();
+        const currentZoom = mapInstanceRef.current.getZoom();
+        
+        // 레이아웃 변경 후 맵 크기 재계산에 딜레이 추가
+        setTimeout(() => {
+          if (mapInstanceRef.current) {
+            // 맵 크기 재계산
+            mapInstanceRef.current.invalidateSize({
+              animate: true,
+              pan: true,
+              debounceMoveEnd: true,
+              duration: 0.25
+            });
+            
+            // 중심점 복원
+            mapInstanceRef.current.setView(currentCenter, currentZoom, {
+              animate: true,
+              duration: 0.5,
+              noMoveStart: true
+            });
+          }
+        }, 300);
+        
+        // 상태 업데이트
+        prevLeftPanelOpen.current = leftPanelOpen;
+        prevRightPanelOpen.current = rightPanelOpen;
+      }
+    }
+  }, [leftPanelOpen, rightPanelOpen]);
+
+  // 맵 객체에 대한 레퍼런스 저장
+  const handleMapInstance = useCallback((instance) => {
+    if (instance) {
+      mapInstanceRef.current = instance;
+      
+      // 외부에서 제공된 ref에 맵 인스턴스 저장
+      if (actualMapRef && typeof actualMapRef === 'object') {
+        actualMapRef.current = {
+          ...actualMapRef.current,
+          leafletElement: instance
+        };
+      }
+      
+      // 초기 생성 시 맵 중심 설정
+      setTimeout(() => {
+        if (instance) {
+          instance.setView(mapCenter, instance.getZoom());
+          
+          // 맵 중심 유지를 위한 이벤트 리스너 추가
+          instance.on('resize', () => {
+            instance.setView(instance.getCenter(), instance.getZoom(), {
+              animate: false
+            });
+          });
+        }
+      }, 100);
+    }
+  }, [actualMapRef, mapCenter]);
 
   // 마운트/언마운트 처리
   useEffect(() => {
@@ -154,6 +239,11 @@ const MapView = ({
 
   // ------ 이벤트 핸들러: 탭 전환 ------
   const handleTabChange = (event, newValue) => {
+    // 레이더 기능이 비활성화되어 있을 때 레이더 탭(2)으로 전환 시도시 무시
+    if (!radarEnabled && newValue === 2) {
+      return;
+    }
+    
     console.log(`탭 변경: ${currentTab} → ${newValue}`);
     
     // 이전 탭의 리소스 정리
@@ -172,7 +262,7 @@ const MapView = ({
     }, 50);
   };
 
-  // ------ 카메라 목록 가져오기(예시) ------
+  // ------ 카메라 목록 가져오기 ------
   // 실제로는 백엔드 API에서 카메라 정보를 가져와 기존 cameras 배열과 병합 가능
   useEffect(() => {
     const fetchCameras = async () => {
@@ -488,6 +578,9 @@ const MapView = ({
 
   // ------ 레이더 데이터 폴링 ------
   useEffect(() => {
+    // 레이더 기능이 비활성화되어 있으면 데이터 폴링하지 않음
+    if (!radarEnabled) return;
+    
     let intervalId = null;
     let isMounted = true;
 
@@ -548,7 +641,7 @@ const MapView = ({
         clearInterval(intervalId);
       }
     };
-  }, [currentTab]);
+  }, [currentTab, radarEnabled]);
 
   // ------ 스피커 제어 함수 ------
   const playSpeakerSound = (soundId) => {
@@ -613,35 +706,39 @@ const MapView = ({
           }}
         >
           <Tab label={translate('통합 모니터링', 'Integrated Monitoring', language)} />
-          <Tab label={translate('카메라 모니터링', 'Camera Monitoring', language)} />
-          <Tab label={translate('레이더 모니터링', 'Radar Monitoring', language)} />
+          <Tab label={translate('지도 모니터링', 'Map Monitoring', language)} />
+          {radarEnabled && (
+            <Tab label={translate('레이더 모니터링', 'Radar Monitoring', language)} />
+          )}
         </Tabs>
 
         {/* 컨트롤 버튼 영역 */}
         <Box sx={{ p: 1, display: 'flex' }}>
-          {/* 레이더 오버레이 토글 버튼 */}
-          <Tooltip title={translate('레이더 오버레이', 'Radar Overlay', language)}>
-            <IconButton
-              size="small"
-              sx={{
-                color: showRadarOverlay ? 'lightblue' : 'white',
-                mr: 1
-              }}
-              onClick={() => setShowRadarOverlay((prev) => !prev)}
-            >
-              {/* SVG 아이콘 (Radar) */}
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                fill="currentColor"
-                className="bi bi-radar"
-                viewBox="0 0 16 16"
+          {/* 레이더 오버레이 토글 버튼 - 레이더 기능 활성화된 경우에만 표시 */}
+          {radarEnabled && (
+            <Tooltip title={translate('레이더 오버레이', 'Radar Overlay', language)}>
+              <IconButton
+                size="small"
+                sx={{
+                  color: showRadarOverlay ? 'lightblue' : 'white',
+                  mr: 1
+                }}
+                onClick={() => setShowRadarOverlay((prev) => !prev)}
               >
-                <path d="M8 1a7 7 0 0 1 7 7v.5A3.49 3.49 0 0 0 13.5 8a.5.5 0 0 1 0-1 4.49 4.49 0 0 1 3.5 4.5A3.5 3.5 0 0 1 13.5 15h-9a3.5 3.5 0 0 1-3.5-3.5A4.49 4.49 0 0 1 4.5 7a.5.5 0 0 1 0 1A3.49 3.49 0 0 0 3 9.5V8a7 7 0 0 1 7-7M8 0a8 8 0 0 0-8 8 4.5 4.5 0 0 0 1.7 3.5A4.49 4.49 0 0 0 0 15.5 4.5 4.5 0 0 0 4.5 20h7a4.5 4.5 0 0 0 4.5-4.5 4.49 4.49 0 0 0-1.7-3.5A4.5 4.5 0 0 0 16 8a8 8 0 0 0-8-8M7 5.5a.5.5 0 0 1 1 0v3a.5.5 0 0 1-1 0z" />
-              </svg>
-            </IconButton>
-          </Tooltip>
+                {/* SVG 아이콘 (Radar) */}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  fill="currentColor"
+                  className="bi bi-radar"
+                  viewBox="0 0 16 16"
+                >
+                  <path d="M8 1a7 7 0 0 1 7 7v.5A3.49 3.49 0 0 0 13.5 8a.5.5 0 0 1 0-1 4.49 4.49 0 0 1 3.5 4.5A3.5 3.5 0 0 1 13.5 15h-9a3.5 3.5 0 0 1-3.5-3.5A4.49 4.49 0 0 1 4.5 7a.5.5 0 0 1 0 1A3.49 3.49 0 0 0 3 9.5V8a7 7 0 0 1 7-7M8 0a8 8 0 0 0-8 8 4.5 4.5 0 0 0 1.7 3.5A4.49 4.49 0 0 0 0 15.5 4.5 4.5 0 0 0 4.5 20h7a4.5 4.5 0 0 0 4.5-4.5 4.49 4.49 0 0 0-1.7-3.5A4.5 4.5 0 0 0 16 8a8 8 0 0 0-8-8M7 5.5a.5.5 0 0 1 1 0v3a.5.5 0 0 1-1 0z" />
+                </svg>
+              </IconButton>
+            </Tooltip>
+          )}
 
           {/* 카메라 오버레이 토글 버튼 */}
           <Tooltip title={translate('카메라 오버레이', 'Camera Overlay', language)}>
@@ -723,20 +820,78 @@ const MapView = ({
             right: 0,
             bottom: 0,
             display: currentTab === 0 ? 'block' : 'none',
-            zIndex: currentTab === 0 ? 10 : 1
+            zIndex: currentTab === 0 ? 10 : 1,
+            p: 1
+          }}
+        >
+          <Grid container spacing={1} sx={{ height: '100%' }}>
+            {cameras.map((cam) => (
+              <Grid key={cam.id} item xs={12} md={6} sx={{ height: '50%' }}>
+                <CameraStream
+                  cameraId={cam.id}
+                  title={translate(`카메라 ${cam.id}`, `Camera ${cam.id}`, language)}
+                  language={language}
+                />
+              </Grid>
+            ))}
+
+            {/* 카메라가 4개 미만이면 PTZ 컨트롤 패널 표시 */}
+            {cameras.length < 4 && (
+              <Grid item xs={6} sx={{ height: '50%' }}>
+                <SidePanel sx={{ height: '100%' }}>
+                  <Box sx={{ p: 2, backgroundColor: '#1e3a5a', display: 'flex', alignItems: 'center', borderTopLeftRadius: 4, borderTopRightRadius: 4 }}>
+                    <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 'bold' }}>
+                      {translate('로그 기록', 'Log Records', language)}
+                    </Typography>
+                  </Box>
+                  
+                  <Box sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center', 
+                    height: 'calc(100% - 60px)', 
+                    p: 2 
+                  }}>
+                    <Typography variant="body2" sx={{ color: '#aaa', textAlign: 'center' }}>
+                      {translate('로그 기록 내용은 추가예정', 'Log content will be added soon', language)}
+                    </Typography>
+                  </Box>
+                </SidePanel>
+              </Grid>
+            )}
+          </Grid>
+        </Box>
+
+        {/* -- 1. 지도 모니터링 탭 -- */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: currentTab === 1 ? 'block' : 'none',
+            zIndex: currentTab === 1 ? 10 : 1
           }}
         >
           {/* 지도 전체 화면 + 카메라 오버레이 */}
           <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
             {/* 지도 영역 (전체 화면) */}
             <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
-              {currentTab === 0 && (
+              {currentTab === 1 && (
                 <MapContainer
                   center={mapCenter}
                   zoom={17}
-                  style={{ width: '100%', height: '100%', borderRadius: '5px' }}
+                  style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    borderRadius: '5px',
+                    transition: 'all 0.3s ease-in-out'
+                  }}
                   ref={actualMapRef}
-                  key={`map-container-${currentTab}`}
+                  key={`map-container-${currentTab}-${leftPanelOpen ? 'left-open' : 'left-closed'}-${rightPanelOpen ? 'right-open' : 'right-closed'}`}
+                  whenCreated={handleMapInstance}
+                  zoomControl={false} // 줌 컨트롤을 비활성화하고 별도로 추가
                 >
                   {/* 위성 타일 레이어 */}
                   <TileLayer
@@ -745,9 +900,39 @@ const MapView = ({
                     attribution="&copy; Google Maps"
                     maxZoom={20}
                   />
+                  
+                  {/* 줌 컨트롤 - 오른쪽 상단에 위치 */}
+                  <div className="leaflet-control-container">
+                    <div className="leaflet-top leaflet-right">
+                      <div className="leaflet-control-zoom leaflet-bar leaflet-control">
+                        <a 
+                          className="leaflet-control-zoom-in" 
+                          href="#" 
+                          title="Zoom in"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            if (mapInstanceRef.current) {
+                              mapInstanceRef.current.zoomIn();
+                            }
+                          }}
+                        >+</a>
+                        <a 
+                          className="leaflet-control-zoom-out" 
+                          href="#" 
+                          title="Zoom out"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            if (mapInstanceRef.current) {
+                              mapInstanceRef.current.zoomOut();
+                            }
+                          }}
+                        >−</a>
+                      </div>
+                    </div>
+                  </div>
 
-                  {/* 레이더 오버레이 */}
-                  {showRadarOverlay && <MapRadarOverlay language={language} />}
+                  {/* 레이더 오버레이 - 레이더 기능 활성화된 경우에만 표시 */}
+                  {radarEnabled && showRadarOverlay && <MapRadarOverlay language={language} />}
 
                   {/* 카메라 마커 및 시야각 표시 */}
                   {cameras.map((camera) => (
@@ -802,7 +987,7 @@ const MapView = ({
                   gap: 1 // 카메라 간격도 줄임
                 }}
               >
-                {cameras.slice(0, 1).map((camera) => (
+                {cameras.map((camera) => (
                   <Paper
                     key={camera.id}
                     elevation={3}
@@ -829,194 +1014,145 @@ const MapView = ({
           </Box>
         </Box>
 
-        {/* -- 1. 카메라 모니터링 탭 -- */}
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: currentTab === 1 ? 'block' : 'none',
-            zIndex: currentTab === 1 ? 10 : 1,
-            p: 1
-          }}
-        >
-          <Grid container spacing={1} sx={{ height: '100%' }}>
-            {cameras.slice(0, 1).map((cam) => (
-              <Grid key={cam.id} item xs={12} sx={{ height: '100%' }}>
-                <CameraStream
-                  cameraId={cam.id}
-                  title={translate(`카메라 ${cam.id}`, `Camera ${cam.id}`, language)}
-                  language={language}
-                />
-              </Grid>
-            ))}
-
-            {/* 카메라가 4개 미만이면 PTZ 컨트롤 패널 표시 */}
-            {cameras.length < 4 && (
-              <Grid item xs={6} sx={{ height: '50%' }}>
-                <SidePanel sx={{ height: '100%' }}>
-                  <Box sx={{ p: 2, backgroundColor: '#1e3a5a', display: 'flex', alignItems: 'center', borderTopLeftRadius: 4, borderTopRightRadius: 4 }}>
-                    <IconButton size="small" sx={{ color: '#fff', p: 0.5, mr: 1 }}>
-                      <CameraIcon fontSize="small" />
-                    </IconButton>
-                    <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 'bold' }}>
-                      {translate('PTZ 제어', 'PTZ Control', language)}
-                    </Typography>
-                  </Box>
-                  
-                  <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                    <Typography variant="body2" sx={{ color: '#aaa', mb: 1, textAlign: 'center' }}>
-                      {translate('카메라 선택', 'Select Camera', language)}
-                    </Typography>
-                    <PtzCameraListItems />
-                  </Box>
-                  
-                  {renderPtzControls()}
-                </SidePanel>
-              </Grid>
-            )}
-          </Grid>
-        </Box>
-
-        {/* -- 2. 레이더 모니터링 탭 -- */}
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: currentTab === 2 ? 'block' : 'none',
-            zIndex: currentTab === 2 ? 10 : 1,
-            backgroundColor: '#0a1929',
-            p: 2
-          }}
-        >
-          <Typography variant="h5" color="white" mb={2}>
-            {translate('레이더 모니터링', 'Radar Monitoring', language)}{' '}
-            <span
-              style={{
-                color: isConnected ? 'lightgreen' : 'orange',
-                fontSize: '0.8em',
-                marginLeft: '10px'
-              }}
-            >
-              {isConnected
-                ? `(${operationMode || '연결됨'})`
-                : '(연결 안됨)'}
-            </span>
-          </Typography>
-
-          <Grid container spacing={2}>
-            {/* 레이더 디스플레이(예시) */}
-            <Grid item xs={12} md={9}>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 2,
-                  borderRadius: 2,
-                  backgroundColor: '#0a1929',
-                  border: '1px solid #1e3a5a',
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column'
+        {/* -- 2. 레이더 모니터링 탭 -- 레이더 기능 활성화된 경우에만 표시 */}
+        {radarEnabled && (
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              display: currentTab === 2 ? 'block' : 'none',
+              zIndex: currentTab === 2 ? 10 : 1,
+              backgroundColor: '#0a1929',
+              p: 2
+            }}
+          >
+            <Typography variant="h5" color="white" mb={2}>
+              {translate('레이더 모니터링', 'Radar Monitoring', language)}{' '}
+              <span
+                style={{
+                  color: isConnected ? 'lightgreen' : 'orange',
+                  fontSize: '0.8em',
+                  marginLeft: '10px'
                 }}
               >
-                <Typography variant="h6" mb={2} color="#fff">
-                  {translate('통합 레이더 데이터', 'Combined Radar Data', language)}
-                  <span
-                    style={{ color: '#4fc3f7', marginLeft: '10px', fontSize: '0.8em' }}
-                  >
-                    플롯: {plotData.length}개
-                  </span>
-                  <span
-                    style={{ color: '#ff9800', marginLeft: '10px', fontSize: '0.8em' }}
-                  >
-                    트랙: {trackData.length}개
-                  </span>
-                </Typography>
+                {isConnected
+                  ? `(${operationMode || '연결됨'})`
+                  : '(연결 안됨)'}
+              </span>
+            </Typography>
 
-                <Box
+            <Grid container spacing={2}>
+              {/* 레이더 디스플레이(예시) */}
+              <Grid item xs={12} md={9}>
+                <Paper
+                  elevation={0}
                   sx={{
-                    flex: 1,
-                    width: '100%',
-                    position: 'relative',
-                    overflow: 'hidden'
+                    p: 2,
+                    borderRadius: 2,
+                    backgroundColor: '#0a1929',
+                    border: '1px solid #1e3a5a',
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column'
                   }}
                 >
-                  <CombinedRadarDisplay
-                    plotData={plotData}
-                    trackData={trackData}
-                    language={language}
-                    hideAlertSettings
-                    key={`radar-display-${currentTab === 2 ? 'active' : 'inactive'}`}
-                  />
-                </Box>
-              </Paper>
-            </Grid>
-
-            {/* 레이더 상태 요약(예시) */}
-            <Grid item xs={12} md={3}>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 1.5,
-                  borderRadius: 2,
-                  backgroundColor: '#0a1929',
-                  border: '1px solid #1e3a5a',
-                  height: '100%'
-                }}
-              >
-                <Typography variant="h6" mb={1.5} fontSize="1rem" color="#fff">
-                  {translate('레이더 상태', 'Radar Status', language)}
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                  <Box
-                    sx={{
-                      p: 1,
-                      backgroundColor: 'rgba(30, 136, 229, 0.1)',
-                      borderRadius: 1,
-                      border: '1px solid rgba(30, 136, 229, 0.2)'
-                    }}
-                  >
-                    <Typography
-                      variant="caption"
-                      sx={{ color: '#90caf9', display: 'block', mb: 0.5 }}
+                  <Typography variant="h6" mb={2} color="#fff">
+                    {translate('통합 레이더 데이터', 'Combined Radar Data', language)}
+                    <span
+                      style={{ color: '#4fc3f7', marginLeft: '10px', fontSize: '0.8em' }}
                     >
-                      {translate('연결 상태', 'Connection Status', language)}
-                    </Typography>
-                    <Typography variant="body1" sx={{ color: '#fff', fontSize: '0.9rem' }}>
-                      {isConnected
-                        ? translate('연결됨', 'Connected', language)
-                        : translate('연결 안됨', 'Disconnected', language)}
-                    </Typography>
-                  </Box>
+                      플롯: {plotData.length}개
+                    </span>
+                    <span
+                      style={{ color: '#ff9800', marginLeft: '10px', fontSize: '0.8em' }}
+                    >
+                      트랙: {trackData.length}개
+                    </span>
+                  </Typography>
 
                   <Box
                     sx={{
-                      p: 1,
-                      backgroundColor: 'rgba(255, 152, 0, 0.1)',
-                      borderRadius: 1,
-                      border: '1px solid rgba(255, 152, 0, 0.2)'
+                      flex: 1,
+                      width: '100%',
+                      position: 'relative',
+                      overflow: 'hidden'
                     }}
                   >
-                    <Typography
-                      variant="caption"
-                      sx={{ color: '#ffb74d', display: 'block', mb: 0.5 }}
-                    >
-                      {translate('운용 모드', 'Operation Mode', language)}
-                    </Typography>
-                    <Typography variant="body1" sx={{ color: '#fff', fontSize: '0.9rem' }}>
-                      {operationMode || translate('알 수 없음', 'Unknown', language)}
-                    </Typography>
+                    <CombinedRadarDisplay
+                      plotData={plotData}
+                      trackData={trackData}
+                      language={language}
+                      hideAlertSettings
+                      key={`radar-display-${currentTab === 2 ? 'active' : 'inactive'}`}
+                    />
                   </Box>
-                </Box>
-              </Paper>
+                </Paper>
+              </Grid>
+
+              {/* 레이더 상태 요약(예시) */}
+              <Grid item xs={12} md={3}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2,
+                    backgroundColor: '#0a1929',
+                    border: '1px solid #1e3a5a',
+                    height: '100%'
+                  }}
+                >
+                  <Typography variant="h6" mb={1.5} fontSize="1rem" color="#fff">
+                    {translate('레이더 상태', 'Radar Status', language)}
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    <Box
+                      sx={{
+                        p: 1,
+                        backgroundColor: 'rgba(30, 136, 229, 0.1)',
+                        borderRadius: 1,
+                        border: '1px solid rgba(30, 136, 229, 0.2)'
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{ color: '#90caf9', display: 'block', mb: 0.5 }}
+                      >
+                        {translate('연결 상태', 'Connection Status', language)}
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: '#fff', fontSize: '0.9rem' }}>
+                        {isConnected
+                          ? translate('연결됨', 'Connected', language)
+                          : translate('연결 안됨', 'Disconnected', language)}
+                      </Typography>
+                    </Box>
+
+                    <Box
+                      sx={{
+                        p: 1,
+                        backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                        borderRadius: 1,
+                        border: '1px solid rgba(255, 152, 0, 0.2)'
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{ color: '#ffb74d', display: 'block', mb: 0.5 }}
+                      >
+                        {translate('운용 모드', 'Operation Mode', language)}
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: '#fff', fontSize: '0.9rem' }}>
+                        {operationMode || translate('알 수 없음', 'Unknown', language)}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Paper>
+              </Grid>
             </Grid>
-          </Grid>
-        </Box>
+          </Box>
+        )}
       </Box>
     </Paper>
   );

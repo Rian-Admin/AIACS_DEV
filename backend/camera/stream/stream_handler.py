@@ -2,7 +2,7 @@ import cv2
 import threading
 import time
 import numpy as np
-import os
+import os  # 환경 변수 설정을 위해 추가
 from collections import deque
 from ..yolo.detector import ObjectDetector
 
@@ -14,37 +14,42 @@ class StreamHandler:
         self.is_running = False
         self.thread = None
         
-        # 버퍼 크기 설정
-        self.frame_buffer = deque(maxlen=4)
+        # 버퍼 크기 축소
+        self.frame_buffer = deque(maxlen=2)  # 최대 2개 프레임만 유지 (지연 더 감소)
         
         # 감지 결과 버퍼 추가
-        self.detection_buffer = deque(maxlen=3)
+        self.detection_buffer = deque(maxlen=5)  # 최근 5개 감지 결과 저장
         
         # 객체 감지 FPS 계산용 변수
         self.detection_fps = 0
         self.detection_count = 0
         self.detection_start_time = time.time()
         
-        # 연결 재시도 설정
-        self.max_retries = 10
+        # 연결 재시도 설정 - 강화된 재연결 시스템
+        self.max_retries = 20  # 재시도 횟수 증가
         self.current_retry = 0
-        self.retry_delay = 3
+        self.retry_delay = 3  # 재시도 간격 3초
+        self.consecutive_failures = 0  # 연속 실패 횟수 추적
+        self.last_reconnect_time = 0  # 마지막 재연결 시도 시간
+        self.reconnect_cool_down = 10  # 연결 성공 후 재시도 쿨다운 시간 (초)
+        self.connection_state = "disconnected"  # 연결 상태 추적
         
         # 비디오 파일 여부 확인
         self.is_video_file = self._is_video_file(url)
         self.is_rtsp = url.lower().startswith('rtsp://')
-        self.video_fps = 10
-        self.last_frame_time = 0
+        self.video_fps = 10  # 비디오 파일의 기본 FPS
+        self.last_frame_time = 0  # 마지막 프레임 시간
         
-        # 프레임 안정성 관련 변수
-        self.awaiting_iframe = False
+        # 프레임 안정성 관련 변수 추가 - 비활성화
+        self.awaiting_iframe = False  # I-프레임 기다림 로직 비활성화
         self.valid_frame_count = 0
-        self.frame_health = 100
+        self.frame_health = 100  # 처음부터 건강한 상태 가정
         
         # RTSP 스트림인 경우 저지연 모드를 위한 환경 변수 설정
         if self.is_rtsp:
-            # TCP 사용 및 타임아웃 증가
-            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|timeout;120000000|stimeout;120000000"
+            # 간결한 RTSP 설정으로 변경
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+            # URL에 쿼리 파라미터(chnid 등)가 있는지 확인하고 출력
             if '?' in url:
                 print(f"카메라 {camera_number}: 쿼리 파라미터 포함된 RTSP URL 사용 - {url}")
         
@@ -53,7 +58,7 @@ class StreamHandler:
         
         # 객체 감지 스케줄링 관련 변수
         self.last_detection_time = 0
-        self.detection_interval = 0.1
+        self.detection_interval = 0.1  # 감지 간격 (초 단위) - 더 자주 감지하도록 조정됨
         
         # 마지막 감지 결과
         self.last_detection_result = None
@@ -82,15 +87,35 @@ class StreamHandler:
         self.thread.start()
     
     def init_capture(self):
-        """비디오 캡처 초기화"""
+        """비디오 캡처 초기화 - 강화된 안정성"""
         try:
+            # 카메라 매니저에서 최신 URL 확인
+            try:
+                from ..frame.camera_manager import CameraManager
+                manager = CameraManager.get_instance()
+                updated_url = manager.get_camera_url(self.camera_number)
+                
+                # URL이 변경된 경우 업데이트
+                if updated_url and updated_url != self.url:
+                    print(f"카메라 {self.camera_number}: URL 업데이트됨 - {self.url} -> {updated_url}")
+                    self.url = updated_url
+            except Exception as e:
+                print(f"카메라 URL 업데이트 중 오류: {e}")
+            
             self.current_retry += 1
             
             # 이전 캡처 객체가 있다면 정리
             if self.cap is not None:
                 self.cap.release()
                 self.cap = None
-                time.sleep(0.5)
+                time.sleep(0.5)  # 완전히 정리될 시간을 줌
+            
+            # 연속 실패 횟수에 따라 재시도 간격 조정 (지수 백오프)
+            if self.consecutive_failures > 3:
+                # 점진적으로 재시도 간격 증가 (최대 30초)
+                cooldown = min(30, self.retry_delay * (2 ** (self.consecutive_failures - 3)))
+                print(f"카메라 {self.camera_number}: 연속 {self.consecutive_failures}회 실패, 대기 시간 {cooldown}초")
+                time.sleep(cooldown - 3)  # 기본 재시도 간격 3초 고려
             
             # RTSP 스트림인 경우 적절한 백엔드와 옵션 사용
             if self.is_rtsp:
@@ -107,30 +132,59 @@ class StreamHandler:
                 if self.is_video_file:
                     self.video_fps = self.cap.get(cv2.CAP_PROP_FPS)
                     if self.video_fps <= 0:
-                        self.video_fps = 30
+                        self.video_fps = 30  # 기본값
                 
                 # RTSP 스트림인 경우 최적화 설정
                 if self.is_rtsp:
-                    # 버퍼 크기 설정
-                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    # 버퍼 크기 최소화 (지연 감소)
+                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
                     # H264 코덱 명시적 지정
                     self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'H264'))
+                    # FPS 설정
+                    self.cap.set(cv2.CAP_PROP_FPS, 30)
                 else:
                     # 비RTSP 스트림/파일에 대한 설정
-                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
                     try:
-                        self.cap.set(cv2.CAP_PROP_HW_ACCELERATION, 1)
+                        self.cap.set(cv2.CAP_PROP_HW_ACCELERATION, 1)  # 하드웨어 가속 활성화
                     except:
                         pass
                 
-                self.current_retry = 0  # 성공 시 재시도 카운터 리셋
+                # 성공 시 재설정
+                self.current_retry = 0
+                self.consecutive_failures = 0
+                self.last_reconnect_time = time.time()
+                self.connection_state = "connected"
+                
+                # 카메라 매니저 상태 업데이트
+                try:
+                    from ..frame.camera_manager import CameraManager
+                    manager = CameraManager.get_instance()
+                    manager._camera_status[str(self.camera_number)] = "online"
+                except Exception:
+                    pass
+                
                 print(f"카메라 {self.camera_number} 초기화 완료: {self.url}")
                 return True
             else:
-                print(f"카메라 {self.camera_number} 연결 실패: {self.url}")
+                # 연결 실패 처리
+                self.consecutive_failures += 1
+                self.connection_state = "failed"
+                
+                # 카메라 매니저 상태 업데이트
+                try:
+                    from ..frame.camera_manager import CameraManager
+                    manager = CameraManager.get_instance()
+                    manager._camera_status[str(self.camera_number)] = "offline"
+                except Exception:
+                    pass
+                
+                print(f"카메라 {self.camera_number} 연결 실패: {self.url} (시도 {self.current_retry}/{self.max_retries})")
                 return False
                 
         except Exception as e:
+            self.consecutive_failures += 1
+            self.connection_state = "error"
             print(f"카메라 초기화 오류: {e}")
             return False
     
@@ -142,97 +196,131 @@ class StreamHandler:
         return True
     
     def _capture_frames(self):
-        """프레임 캡처 스레드 - 성능 최적화"""
+        """프레임 캡처 스레드 - 성능 최적화 및 강화된 재연결"""
         empty_frame_count = 0
-        last_processed_time = time.time()
-        frame_target_duration = 1.0 / 10.0  # 10 FPS
+        frame_interval = 0.001  # FPS 제한 제거 (최대 속도로 처리)
+        last_frame_time = time.time()
+        connection_monitor_time = time.time()  # 연결 모니터링 타이머
+        connection_check_interval = 10  # 10초마다 연결 상태 확인
         
         while self.is_running:
-            try:
-                # 캡처 상태 확인
-                if self.cap is None or not self.cap.isOpened():
-                    if self.current_retry < self.max_retries:
-                        time.sleep(self.retry_delay)
+            current_time = time.time()
+            
+            # 주기적으로 연결 상태 확인 및 로깅
+            if current_time - connection_monitor_time >= connection_check_interval:
+                connection_monitor_time = current_time
+                print(f"카메라 {self.camera_number} 연결 상태: {self.connection_state}, 재시도: {self.current_retry}/{self.max_retries}, 실패: {self.consecutive_failures}")
+            
+            # 비디오 파일인 경우 원래 FPS에 맞춰 재생
+            if self.is_video_file:
+                # 비디오 원본 FPS에 맞게 대기
+                frame_delay = 1.0 / self.video_fps
+                time_since_last_frame = current_time - last_frame_time
+                
+                if time_since_last_frame < frame_delay:
+                    # 다음 프레임까지 대기
+                    time.sleep(max(0, frame_delay - time_since_last_frame))
+                    continue
+            else:
+                # RTSP 스트림인 경우 최소 대기 시간 적용 (CPU 부하 방지)
+                if current_time - last_frame_time < frame_interval:
+                    time.sleep(0.001)  # 아주 짧은 대기
+                    continue
+                
+            # 캡처 상태 확인
+            if self.cap is None or not self.cap.isOpened():
+                if self.current_retry < self.max_retries:
+                    # 재연결 시도 간격 확인 (쿨다운 적용)
+                    if current_time - self.last_reconnect_time >= self.retry_delay:
+                        print(f"카메라 {self.camera_number} 재연결 시도 중...")
                         self.init_capture()
-                        continue
                     else:
-                        # 빈 프레임 추가
-                        self._add_empty_frame_to_buffer("연결 실패")
-                        time.sleep(0.5)
-                        continue
-                
-                # 프레임 캡처
-                ret, frame = self.cap.read()
-                
-                # 비디오 파일이 끝났는지 확인
-                if self.is_video_file and not ret:
-                    # 비디오 파일 재시작
-                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        # 대기 중임을 나타내는 메시지 추가
+                        self._add_empty_frame_to_buffer(f"재연결 대기 중... ({int(self.retry_delay - (current_time - self.last_reconnect_time))}초)")
+                    time.sleep(0.5)
                     continue
-          
-                if not ret or frame is None or frame.size == 0:
-                    empty_frame_count += 1
-                    
-                    # 연속으로 빈 프레임이 많이 오면 연결 재설정
-                    if empty_frame_count > 5:
-                        print(f"카메라 {self.camera_number}: 빈 프레임이 너무 많음, 연결 재설정")
-                        self.cap.release()
-                        self.cap = None
-                        empty_frame_count = 0
-                        continue
-                    
-                    # 빈 프레임 추가
-                    self._add_empty_frame_to_buffer("프레임 없음")
-                    continue
-                
-                # 정상 프레임 처리
-                empty_frame_count = 0
-                
-                # 현재 시간 확인
-                current_time = time.time()
-                
-                # 10FPS로 제한 (스로우 모션 방지)
-                time_since_last_frame = current_time - last_processed_time
-                
-                # 이 부분이 중요함: 10FPS 이하로만 처리
-                if time_since_last_frame >= frame_target_duration:
-                    # 버퍼에 프레임 추가 (순환 버퍼이므로 자동으로 오래된 것 제거)
-                    self.frame_buffer.append(frame.copy())
-                    last_processed_time = current_time
-                    
-                    # 객체 감지 요청 (일정 간격으로만)
-                    if current_time - self.last_detection_time >= self.detection_interval:
-                        # 우선순위 설정 (카메라 번호 기반)
-                        priority = min(10, max(1, self.camera_number))
-                        
-                        # 비동기 감지 요청
-                        self.detector.detect_objects_async(
-                            self.camera_number, 
-                            frame.copy(),
-                            priority=priority
-                        )
-                        self.last_detection_time = current_time
-                        
-                        # 감지 카운터 증가
-                        self.detection_count += 1
-                        detection_elapsed = current_time - self.detection_start_time
-                        if detection_elapsed >= 1.0:
-                            self.detection_fps = self.detection_count / detection_elapsed
-                            self.detection_count = 0
-                            self.detection_start_time = current_time
                 else:
-                    # 너무 빨리 오는 프레임은 건너뛰기
-                    pass
+                    # 최대 재시도 횟수 초과 시 오류 프레임 추가하고 재설정
+                    self._add_empty_frame_to_buffer("최대 재시도 횟수 초과")
+                    
+                    # 재시도 카운터 리셋하여 다시 시작할 수 있게 함
+                    if current_time - self.last_reconnect_time >= 60:  # 1분 후 다시 시도
+                        self.current_retry = 0
+                        self.last_reconnect_time = current_time
+                        print(f"카메라 {self.camera_number} 재시도 카운터 리셋")
+                    
+                    time.sleep(1)
+                    continue
+            
+            # 프레임 캡처
+            ret, frame = self.cap.read()
+            last_frame_time = time.time()
+            
+            # 비디오 파일이 끝났는지 확인
+            if self.is_video_file and not ret:
+                # 비디오 파일 재시작
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                continue
+      
+            if not ret or frame is None or frame.size == 0:
+                empty_frame_count += 1
                 
-                # CPU 사용량을 낮추기 위한 최소 대기
-                # 프레임 간 간격이 타겟보다 작으면 나머지 시간만큼 대기
-                remaining_time = frame_target_duration - time_since_last_frame
-                if remaining_time > 0:
-                    time.sleep(remaining_time / 2)  # 정확한 타이밍을 위해 절반만 대기
+                # 연속으로 빈 프레임이 많이 오면 연결 재설정
+                if empty_frame_count > 5:
+                    print(f"카메라 {self.camera_number}: 빈 프레임이 너무 많음, 연결 재설정")
+                    self.connection_state = "reconnecting"
+                    self.cap.release()
+                    self.cap = None
+                    empty_frame_count = 0
+                    
+                    # 카메라 매니저에서 강제 재연결 시도
+                    try:
+                        from ..frame.camera_manager import CameraManager
+                        manager = CameraManager.get_instance()
+                        manager.force_reconnect(self.camera_number)
+                    except Exception as e:
+                        print(f"카메라 매니저 재연결 시도 중 오류: {e}")
+                    
+                    continue
                 
-            except Exception as e:
-                print(f"프레임 캡처 중 오류: {e}")
-                time.sleep(0.1)  # 오류 발생 시 짧게 대기
+                # 빈 프레임 추가
+                self._add_empty_frame_to_buffer("프레임 없음")
+                continue
+            
+            # 정상 프레임 처리 - 유효성 검사 간소화
+            empty_frame_count = 0
+            
+            # 연결 상태 업데이트
+            if self.connection_state != "connected":
+                self.connection_state = "connected"
+                print(f"카메라 {self.camera_number}: 스트림 복구됨")
+            
+            # 버퍼에 프레임 추가 (순환 버퍼이므로 자동으로 오래된 것 제거)
+            self.frame_buffer.append(frame.copy())  # 깊은 복사로 프레임 보존
+            
+            # 객체 감지 요청 (일정 간격으로만)
+            if current_time - self.last_detection_time >= self.detection_interval:
+                # 우선순위 설정 (카메라 번호 기반)
+                priority = min(10, max(1, int(self.camera_number)))  # 1-10 사이의 우선순위
+                
+                # 비동기 감지 요청
+                self.detector.detect_objects_async(
+                    self.camera_number, 
+                    frame.copy(),  # 깊은 복사로 안전한 참조 전달
+                    priority=priority
+                )
+                self.last_detection_time = current_time
+                
+                # 감지 카운터 증가
+                self.detection_count += 1
+                detection_elapsed = current_time - self.detection_start_time
+                if detection_elapsed >= 1.0:
+                    self.detection_fps = self.detection_count / detection_elapsed
+                    self.detection_count = 0
+                    self.detection_start_time = current_time
+            
+            # 매우 짧은 대기 (CPU 사용량 제한)
+            time.sleep(0.001)
     
     def _add_empty_frame_to_buffer(self, message):
         """빈 프레임을 버퍼에 추가"""
@@ -243,6 +331,15 @@ class StreamHandler:
         font = cv2.FONT_HERSHEY_COMPLEX
         text = f"camera {self.camera_number}: {message}"
         cv2.putText(empty_frame, text, (120, 240), font, 1, (255, 255, 255), 2) 
+        
+        # 현재 시간 추가
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        cv2.putText(empty_frame, timestamp, (10, 20), font, 0.5, (255, 255, 255), 1)
+        
+        # 상태 정보 추가
+        state_text = f"상태: {self.connection_state} | 시도: {self.current_retry}/{self.max_retries}"
+        cv2.putText(empty_frame, state_text, (10, 460), font, 0.5, (255, 255, 255), 1)
+        
         # 버퍼에 추가
         self.frame_buffer.append(empty_frame)
     
@@ -284,6 +381,46 @@ class StreamHandler:
     def get_latest_detection(self):
         """최신 감지 결과 반환"""
         return self.last_detection_result
+    
+    def get_connection_state(self):
+        """현재 연결 상태 반환"""
+        return {
+            "state": self.connection_state,
+            "retries": self.current_retry,
+            "max_retries": self.max_retries,
+            "consecutive_failures": self.consecutive_failures
+        }
+    
+    def force_reconnect(self):
+        """강제로 카메라 재연결"""
+        try:
+            print(f"카메라 {self.camera_number} 강제 재연결 시도...")
+            
+            # 기존 연결 정리
+            if self.cap:
+                self.cap.release()
+                self.cap = None
+            
+            # 재시도 카운터 초기화
+            self.current_retry = 0
+            self.consecutive_failures = 0
+            self.last_reconnect_time = 0  # 즉시 재연결 시도하도록
+            self.connection_state = "reconnecting"
+            
+            # 카메라 매니저에서 강제 URL 갱신
+            try:
+                from ..frame.camera_manager import CameraManager
+                manager = CameraManager.get_instance()
+                manager.force_reconnect(self.camera_number)
+            except Exception as e:
+                print(f"카메라 매니저 재연결 시도 중 오류: {e}")
+            
+            # 초기화 재시도
+            return self.init_capture()
+            
+        except Exception as e:
+            print(f"강제 재연결 중 오류: {e}")
+            return False
     
     def stop(self):
         """스트림 중지 및 자원 정리"""

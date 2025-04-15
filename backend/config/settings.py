@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import django_heroku
 import sys
 from datetime import datetime
 
@@ -16,8 +17,6 @@ SECRET_KEY = 'd=j7y_#hw(dx315rzsmr@iqmk+d#jkvyus60)$by7=vyl=v*s^'
 DEBUG = True  # 디버그 모드 활성화
 ALLOWED_HOSTS = ['*']  # 모든 호스트 허용
 TIMEOUT = 60
-STATIC_ROOT = 'C:/nginx-1.26.3/html/frontend/static'
-MEDIA_ROOT = 'C:/nginx-1.26.3/html/frontend/media'
 # 앱 설정
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -53,26 +52,7 @@ CORS_ALLOW_ALL_ORIGINS = True  # 개발 단계에서는 모든 오리진 허용
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://192.168.219.78:3000",
-    "http://192.168.219.78",
-    "http://aiacs.kr",
-    "http://www.aiacs.kr",
-]
-
-# CORS 추가 설정
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-    'cache-control',
-    'if-modified-since',
-    'range',
+    "http://192.168.219.215:3000",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -92,10 +72,7 @@ X_FRAME_OPTIONS = 'SAMEORIGIN'
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://192.168.219.78:3000",
-    "http://192.168.219.78",
-    "http://aiacs.kr",
-    "http://www.aiacs.kr",
+    "http://192.168.219.215:3000",
 ]
 
 # CSRF 설정
@@ -132,7 +109,7 @@ DATABASES = {
         'NAME': 'bird_detection',
         'USER': 'postgres',
         'PASSWORD': '1234',
-        'HOST': 'localhost',
+        'HOST': '127.0.0.1',
         'PORT': '5432',
         'OPTIONS': {
             'client_encoding': 'UTF8',
@@ -167,7 +144,7 @@ def get_safe_year():
     except:
         return 2024
 
-USE_TZ = False
+USE_TZ = True
 TIME_ZONE = 'Asia/Seoul'
 SAFE_YEAR = get_safe_year()
 

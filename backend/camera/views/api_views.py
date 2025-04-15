@@ -9,6 +9,7 @@ from ..db import db_adapter
 from ..models import Camera, DetectionInfo
 from datetime import datetime
 from ..yolo.detector import ObjectDetector
+from ..hardware.bird_controller import BirdController
 from ..hardware.ptz_manager import PTZManager
 
 # 로그 비활성화
@@ -244,6 +245,48 @@ def get_yolo_info(request):
         }, status=500)
 
 @csrf_exempt
+def enable_controller(request):
+    """조류퇴치기 활성화 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': '잘못된 요청 방식'}, status=405)
+    
+    try:
+        controller = BirdController.get_instance()
+        controller.enable_controller()
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': '조류퇴치기가 활성화되었습니다'
+        })
+    except Exception as e:
+        logger.error(f"조류퇴치기 활성화 오류: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'오류: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def disable_controller(request):
+    """조류퇴치기 비활성화 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': '잘못된 요청 방식'}, status=405)
+    
+    try:
+        controller = BirdController.get_instance()
+        controller.disable_controller()
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': '조류퇴치기가 비활성화되었습니다'
+        })
+    except Exception as e:
+        logger.error(f"조류퇴치기 비활성화 오류: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'오류: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
 def control_ptz(request):
     """PTZ 카메라 제어 API"""
     if request.method != 'POST':
@@ -387,3 +430,129 @@ def get_ptz_position(request, camera_id):
             'status': 'error',
             'message': f'PTZ 위치 정보 가져오기 중 오류가 발생했습니다: {str(e)}'
         }, status=500)
+
+# 카메라 재연결 엔드포인트 추가
+@csrf_exempt
+def reconnect_camera(request, camera_id):
+    """특정 카메라를 강제로 재연결하는 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': '잘못된 요청 메소드'}, status=405)
+    
+    try:
+        # 카메라 ID가 유효한지 확인
+        try:
+            camera = Camera.objects.get(camera_id=camera_id)
+        except Camera.DoesNotExist:
+            return JsonResponse({'status': 'error', 'message': f'카메라 {camera_id}를 찾을 수 없습니다'}, status=404)
+        
+        # 카메라 매니저를 통한 재연결 시도
+        manager = CameraManager.get_instance()
+        reconnect_result = manager.force_reconnect(camera_id)
+        
+        # VideoCamera 객체 캐시 갱신
+        from .camera_views import get_cached_camera
+        get_cached_camera(camera_id)
+        
+        if reconnect_result:
+            return JsonResponse({
+                'status': 'success', 
+                'message': f'카메라 {camera_id} 재연결 성공',
+                'camera_status': manager.get_camera_status(camera_id)
+            })
+        else:
+            return JsonResponse({
+                'status': 'warning', 
+                'message': f'카메라 {camera_id} 재연결 시도했으나 실패함',
+                'camera_status': manager.get_camera_status(camera_id)
+            }, status=200)  # 실패해도 200 반환 (클라이언트 정보용)
+            
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+@csrf_exempt
+def get_camera_status(request, camera_id=None):
+    """카메라의 현재 연결 상태를 반환하는 API"""
+    try:
+        manager = CameraManager.get_instance()
+        
+        # 특정 카메라의 상태만 요청된 경우
+        if camera_id is not None:
+            status = manager.get_camera_status(camera_id)
+            return JsonResponse({
+                'status': 'success',
+                'camera_id': camera_id,
+                'connection_status': status
+            })
+        
+        # 모든 카메라 상태 요청된 경우
+        else:
+            # DB에서 모든 카메라 가져오기
+            cameras = Camera.objects.all()
+            statuses = {}
+            
+            for camera in cameras:
+                camera_id = camera.camera_id
+                status = manager.get_camera_status(camera_id)
+                statuses[str(camera_id)] = {
+                    'status': status,
+                    'rtsp_address': camera.rtsp_address,
+                    'camera_desc': f"{camera.installation_direction} ({camera.viewing_angle}°)"
+                }
+            
+            return JsonResponse({
+                'status': 'success',
+                'cameras': statuses
+            })
+            
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+@csrf_exempt
+def reconnect_all_cameras(request):
+    """모든 카메라를 강제로 재연결하는 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': '잘못된 요청 메소드'}, status=405)
+    
+    try:
+        # DB에서 모든 카메라 가져오기
+        cameras = Camera.objects.all()
+        
+        # 각 카메라 재연결 시도
+        manager = CameraManager.get_instance()
+        
+        results = {}
+        success_count = 0
+        
+        for camera in cameras:
+            camera_id = camera.camera_id
+            try:
+                # 카메라 매니저를 통한 재연결 시도
+                reconnect_result = manager.force_reconnect(camera_id)
+                
+                # VideoCamera 객체 캐시 갱신
+                from .camera_views import get_cached_camera
+                get_cached_camera(camera_id)
+                
+                if reconnect_result:
+                    results[str(camera_id)] = "success"
+                    success_count += 1
+                else:
+                    results[str(camera_id)] = "failed"
+                
+            except Exception as e:
+                results[str(camera_id)] = f"error: {str(e)}"
+        
+        return JsonResponse({
+            'status': 'success', 
+            'message': f'{success_count}/{len(cameras)} 카메라 재연결 성공',
+            'results': results
+        })
+            
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
