@@ -22,7 +22,7 @@ const CollisionAlert = ({ collisionRisks, language }) => {
     <Paper 
       elevation={0} 
       sx={{ 
-        p: 1.5, 
+        p: 1,
         borderRadius: 2, 
         backgroundColor: '#050A18',
         border: '1px solid rgba(30, 58, 90, 0.3)',
@@ -35,9 +35,10 @@ const CollisionAlert = ({ collisionRisks, language }) => {
         variant="subtitle2" 
         fontWeight="bold" 
         sx={{ 
-          mb: 1, 
+          mb: 0.5,
           color: 'white',
-          textShadow: '0 0 5px rgba(255,255,255,0.5)'
+          textShadow: '0 0 5px rgba(255,255,255,0.5)',
+          fontSize: '0.85rem'
         }}
       >
         {translate('충돌 위험 알림', 'Collision Risk Alerts', language)}
@@ -52,11 +53,11 @@ const CollisionAlert = ({ collisionRisks, language }) => {
                 <Box 
                   key={risk.id} 
                   sx={{ 
-                    mb: 0.7, 
+                    mb: 0.5,
                     position: 'relative',
                     display: 'flex',
                     alignItems: 'center',
-                    p: 1,
+                    p: 0.7,
                     backgroundColor: 'rgba(0, 25, 50, 0.4)',
                     borderRadius: 1,
                     border: '1px solid rgba(30, 58, 90, 0.2)',
@@ -70,22 +71,22 @@ const CollisionAlert = ({ collisionRisks, language }) => {
                   {/* 위험도 표시 원형 아이콘 */}
                   <Box
                     sx={{
-                      width: 46,
-                      height: 46,
+                      width: 32,
+                      height: 32,
                       borderRadius: '50%',
                       backgroundColor: `rgba(${risk.level === 'critical' ? '211, 47, 47' : risk.level === 'high' ? '245, 124, 0' : risk.level === 'medium' ? '251, 192, 45' : '76, 175, 80'}, 0.15)`,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       boxShadow: `0 0 8px ${riskColor}80`,
-                      mr: 1.5
+                      mr: 1
                     }}
                   >
                     <Typography 
                       sx={{ 
                         color: riskColor, 
                         fontWeight: 'bold',
-                        fontSize: '1.5rem',
+                        fontSize: '1.1rem',
                         textShadow: `0 0 10px ${riskColor}`
                       }}
                     >
@@ -101,7 +102,7 @@ const CollisionAlert = ({ collisionRisks, language }) => {
                         color: '#A9EAFF',
                         fontWeight: 'bold',
                         textShadow: '0 0 5px rgba(169,234,255,0.5)',
-                        fontSize: '0.9rem'
+                        fontSize: '0.8rem'
                       }}
                     >
                       {risk.location} - {translateSpecies(risk.species, language)}
@@ -114,14 +115,13 @@ const CollisionAlert = ({ collisionRisks, language }) => {
                     sx={{ 
                       color: 'rgba(169,234,255,0.7)',
                       textShadow: '0 0 3px rgba(169,234,255,0.4)',
-                      fontSize: '0.75rem'
+                      fontSize: '0.7rem'
                     }}
                   >
                     {new Date(risk.timestamp).toLocaleTimeString(undefined, {
                       hour: '2-digit',
                       minute: '2-digit',
-                      second: '2-digit',
-                      hour12: true
+                      hour12: false
                     })}
                   </Typography>
                 </Box>
@@ -135,7 +135,7 @@ const CollisionAlert = ({ collisionRisks, language }) => {
               flexDirection: 'column', 
               alignItems: 'center', 
               justifyContent: 'center',
-              py: 2,
+              py: 1,
               height: '100%'
             }}
           >
@@ -143,7 +143,8 @@ const CollisionAlert = ({ collisionRisks, language }) => {
               variant="body2" 
               sx={{ 
                 color: 'rgba(169,234,255,0.7)',
-                textShadow: '0 0 3px rgba(169,234,255,0.4)'
+                textShadow: '0 0 3px rgba(169,234,255,0.4)',
+                fontSize: '0.8rem'
               }}
             >
               {translate('현재 충돌 위험 없음', 'No collision risks detected', language)}

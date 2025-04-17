@@ -198,10 +198,10 @@ class StreamHandler:
     def _capture_frames(self): #영상 재생 프레임
         """프레임 캡처 스레드 - 성능 최적화 및 강화된 재연결"""
         empty_frame_count = 0
-        frame_interval = 0.1  # 30fps로 변경 (적절한 부드러움 유지)
+        frame_interval = 0.1 # 30fps로 변경 (적절한 부드러움 유지)
         last_frame_time = time.time()
         connection_monitor_time = time.time()  # 연결 모니터링 타이머
-        connection_check_interval = 10  # 10초마다 연결 상태 확인
+        connection_check_interval = 15 # 10초마다 연결 상태 확인
         
         while self.is_running:
             current_time = time.time()
@@ -332,7 +332,7 @@ class StreamHandler:
             
             # FPS 제한 로직 추가 (30fps로 변경)
             current_time = time.time()
-            if hasattr(self, 'last_detection_time') and current_time - self.last_detection_time < 0.1:  # (0.033 = 30fps)
+            if hasattr(self, 'last_detection_time') and current_time - self.last_detection_time < 0.033: # (0.033 = 30fps)
                 # 이전 결과 재사용
                 return frame, self.last_detection_result
                 

@@ -28,7 +28,7 @@ const useAppStore = create(
       radars: [],
       activeRadarId: null,
       radarHistoryVisible: false, // 레이더 히스토리 표시 여부
-      radarEnabled: true, // 레이더 기능 활성화 여부
+      radarEnabled: false, // 레이더 기능 활성화 여부
       
       // ===== 알림 상태 =====
       alerts: [],
@@ -38,7 +38,7 @@ const useAppStore = create(
       // ===== 날씨 관련 상태 =====
       weatherData: null,
       weatherForecast: [],
-      weatherEnabled: true, // 기상 정보 기능 활성화 여부
+      weatherEnabled: false, // 기상 정보 기능 활성화 여부
       
       // ===== 충돌 위험 상태 =====
       collisionRisks: [],
@@ -112,12 +112,12 @@ const useAppStore = create(
         radars: [],
         activeRadarId: null,
         radarHistoryVisible: false,
-        radarEnabled: true,
+        radarEnabled: false,
         alerts: [],
         unreadAlertCount: 0,
         weatherData: null,
         weatherForecast: [],
-        weatherEnabled: true,
+        weatherEnabled: false,
         collisionRisks: [],
         highestRiskLevel: 'low',
         defenseSystems: [],
@@ -141,6 +141,7 @@ const useAppStore = create(
         confidenceThreshold: state.confidenceThreshold,
         alertSoundEnabled: state.alertSoundEnabled,
         radarEnabled: state.radarEnabled,
+        weatherEnabled: state.weatherEnabled,
       }),
     }
   )
