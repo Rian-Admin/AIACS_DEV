@@ -1,0 +1,16 @@
+
+---------- CAMERA2\ADMIN.PY: 19
+
+---------- CAMERA2\APPS.PY: 5
+
+---------- CAMERA2\CREATE_BIRD_CLASSES.PY: 143
+
+---------- CAMERA2\CREATE_DETERRENT_DUMMY.PY: 176
+
+---------- CAMERA2\MODELS.PY: 149
+
+---------- CAMERA2\TESTS.PY: 3
+
+---------- CAMERA2\URLS.PY: 97
+
+---------- CAMERA2\__INIT__.PY: 2

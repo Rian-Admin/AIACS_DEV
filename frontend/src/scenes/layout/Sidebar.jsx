@@ -22,7 +22,7 @@ import {
 // 메뉴 아이템 정의 - 메뉴를 별도로 분리
 const baseMenuItems = [
   { id: 'dashboard', path: '/', icon: <DashboardIcon />, label: { ko: '대시보드', en: 'Dashboard' } },
-  { id: 'camera', path: '/camera', icon: <CameraIcon />, label: { ko: '조류 모니터링', en: 'Bird Monitoring' } },
+  // { id: 'camera', path: '/camera', icon: <CameraIcon />, label: { ko: '조류 모니터링', en: 'Bird Monitoring' } },
   { id: 'video', path: '/video-analysis', icon: <VideoIcon />, label: { ko: '동영상 분석', en: 'Video Analysis' } }
 ];
 

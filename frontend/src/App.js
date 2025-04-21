@@ -8,7 +8,6 @@ import useAppStore from './store/useAppStore';
 // 씬 임포트
 import Layout from './scenes/layout';
 import Dashboard from './scenes/dashboard';
-import CameraMonitoring from './scenes/cameraMonitoring';
 import VideoAnalysis from './scenes/videoAnalysis';
 import Settings from './scenes/settings';
 import RadarMonitoring from './scenes/radarMonitoring';
@@ -72,7 +71,7 @@ function App() {
                 handleLogout={handleLogout}
               />}>
                 <Route path="/" element={<Dashboard language={language} />} />
-                <Route path="/camera" element={<CameraMonitoring language={language} />} />
+                {/* <Route path="/camera" element={<CameraMonitoring language={language} />} /> */}
                 <Route path="/video-analysis" element={<VideoAnalysis language={language} />} />
                 <Route 
                   path="/radar" 

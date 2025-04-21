@@ -41,8 +41,8 @@ const Layout = ({ language, changeLanguage, handleLogout }) => {
     switch (path) {
       case '/':
         return translate('조류충돌방지시스템', 'AIACS', language);
-      case '/camera':
-        return translate('카메라 모니터링', 'Camera Monitoring', language);
+      // case '/camera':
+      //   return translate('카메라 모니터링', 'Camera Monitoring', language);
       case '/video-analysis':
         return translate('동영상 분석', 'Video Analysis', language);
       case '/radar':

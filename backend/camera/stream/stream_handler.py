@@ -332,7 +332,7 @@ class StreamHandler:
             
             # FPS 제한 로직 추가 (30fps로 변경)
             current_time = time.time()
-            if hasattr(self, 'last_detection_time') and current_time - self.last_detection_time < 0.033: # (0.033 = 30fps)
+            if hasattr(self, 'last_detection_time') and current_time - self.last_detection_time < 0.1: # (0.033 = 30fps)
                 # 이전 결과 재사용
                 return frame, self.last_detection_result
                 
