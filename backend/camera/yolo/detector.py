@@ -369,7 +369,10 @@ class ObjectDetector:
         if not self.inference_times:
             return 0
         avg_ms = sum(self.inference_times) / len(self.inference_times)
-        return 1000 / avg_ms if avg_ms > 0 else 0
+        calculated_fps = 1000 / avg_ms if avg_ms > 0 else 0
+        
+        # FPS 제한 적용 (실제 프레임 레이트 10으로 제한)
+        return min(10.0, calculated_fps)
     
     def get_model_info(self):
         """모델 정보 반환"""

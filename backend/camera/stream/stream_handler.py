@@ -34,8 +34,8 @@ class StreamHandler:
         
         # RTSP 스트림인 경우 저지연 모드를 위한 환경 변수 설정
         if self.is_rtsp:
-            # 간결한 RTSP 설정으로 변경
-            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
+            # 간결한 RTSP 설정으로 변경 - TCP로 변경하여 안정성 개선
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
             # URL에 쿼리 파라미터(chnid 등)가 있는지 확인하고 출력
             if '?' in url:
                 print(f"카메라 {camera_number}: 쿼리 파라미터 포함된 RTSP URL 사용 - {url}")
@@ -112,7 +112,7 @@ class StreamHandler:
                 if self.is_video_file:
                     self.video_fps = self.cap.get(cv2.CAP_PROP_FPS)
                     if self.video_fps <= 0:
-                        self.video_fps = 10  # 기본값
+                        self.video_fps = 30  # 기본값 30으로 상향
                 
                 # RTSP 스트림인 경우 최적화 설정
                 if self.is_rtsp:
@@ -120,8 +120,8 @@ class StreamHandler:
                     self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
                     # H264 코덱 명시적 지정
                     self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'H264'))
-                    # FPS 설정
-                    self.cap.set(cv2.CAP_PROP_FPS, 10)
+                    # FPS 설정 - 30FPS로 개선
+                    self.cap.set(cv2.CAP_PROP_FPS, 30)
                 else:
                     # 비RTSP 스트림/파일에 대한 설정
                     self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
@@ -178,10 +178,10 @@ class StreamHandler:
     def _capture_frames(self):
         """프레임 캡처 스레드 - 성능 최적화 및 강화된 재연결"""
         empty_frame_count = 0
-        frame_interval = 0.1  # 10 FPS 제한 (1초 / 10 = 0.1초)
+        frame_interval = 0.01  # 100 FPS 가능 (더 부드러운 재생)
         last_frame_time = time.time()
         connection_monitor_time = time.time()  # 연결 모니터링 타이머
-        connection_check_interval = 10  # 10초마다 연결 상태 확인
+        connection_check_interval = 60  # 60초마다 연결 상태 확인 (기존 10초에서 변경)
         
         while self.is_running:
             current_time = time.time()
@@ -191,10 +191,21 @@ class StreamHandler:
                 connection_monitor_time = current_time
                 print(f"카메라 {self.camera_number} 연결 상태: {self.connection_state}, 재시도: {self.current_retry}/{self.max_retries}, 실패: {self.consecutive_failures}")
             
-            # 모든 소스에 대해 동일한 FPS 제한 적용 (비디오 파일 포함)
-            if current_time - last_frame_time < frame_interval:
-                time.sleep(0.001)  # 아주 짧은 대기
-                continue
+            # 비디오 파일과 RTSP 스트림 처리를 분리
+            if self.is_video_file:
+                # 비디오 원본 FPS에 맞게 대기
+                frame_delay = 1.0 / self.video_fps
+                time_since_last_frame = current_time - last_frame_time
+                
+                if time_since_last_frame < frame_delay:
+                    # 다음 프레임까지 대기
+                    time.sleep(max(0, frame_delay - time_since_last_frame))
+                    continue
+            else:
+                # RTSP 스트림인 경우 최소 대기 시간 적용 (CPU 부하 방지)
+                if current_time - last_frame_time < frame_interval:
+                    time.sleep(0.001)  # 아주 짧은 대기
+                    continue
             
             # 캡처 상태 확인
             if self.cap is None or not self.cap.isOpened():
@@ -229,6 +240,8 @@ class StreamHandler:
             if self.is_video_file and not ret:
                 # 비디오 파일 재시작
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                # 비디오 파일 재시작 후 약간의 지연 추가 - 안정적인 루프 재생
+                time.sleep(0.05)
                 continue
       
             if not ret or frame is None or frame.size == 0:
@@ -315,6 +328,7 @@ class StreamHandler:
                 return None
                 
             # 가장 최근 프레임 반환 (깊은 복사로 반환)
+            # 프레임 데이터 무결성을 위해 복사본 반환
             return self.frame_buffer[-1].copy()
             
         except Exception as e:

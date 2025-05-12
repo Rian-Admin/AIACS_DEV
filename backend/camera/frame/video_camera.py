@@ -33,7 +33,7 @@ class VideoCamera:
         self._last_results = None
         self._last_processed_result = None
         self._last_db_update = time.time()
-        self._db_update_interval = 5  # DB 업데이트 간격 (초)
+        self._db_update_interval = 30  # 30초마다 DB 업데이트 (기존 5초에서 증가)
         self._capture_timing_stats = []
         
         # 마지막 유효 프레임 저장 변수 초기화
@@ -94,7 +94,7 @@ class VideoCamera:
     def _process_results_thread(self):
         """감지 결과 처리 및 DB 업데이트를 위한 별도 스레드"""
         last_check_time = time.time()
-        check_interval = 0.2  # 0.2초마다 새 결과 확인
+        check_interval = 1.0  # 1초마다 새 결과 확인 (기존 0.2초에서 증가)
         
         while self.is_running:
             try:
@@ -170,7 +170,7 @@ class VideoCamera:
                 return self._create_empty_frame(f"카메라 {self.camera_number}: 프레임 없음")
             
             # 마지막 유효 프레임 저장
-            self._last_valid_frame = frame.copy()
+            self._last_valid_frame = frame
             self._last_frame_time = time.time()
             
             # 카메라 ID를 문자열로 전달하여 가드존 필터링이 적용되도록 함
@@ -195,7 +195,8 @@ class VideoCamera:
                 # 객체 감지 처리 빈도 제한 (GPU 사용량 절감)
                 current_time = time.time()
                 if current_time - self._last_detection_time >= self._detection_interval:
-                    # 객체 감지 수행
+                    # 객체 감지 수행 - 안정성을 위해 복사본 사용
+                    # 프레임 데이터 변경 방지를 위한 복사 필요
                     result = self.detector.detect_objects(frame.copy(), camera_id=camera_id_str)
                     
                     # 감지 결과가 있으면 바운딩 박스 그리기
@@ -329,10 +330,10 @@ class VideoCamera:
         
         # 감지된 객체가 있는지 확인
         if boxes is None or not hasattr(boxes, '__len__') or len(boxes) == 0:
-            logger.info("감지된 객체 없음")
+            # logger.info("감지된 객체 없음")
             return
             
-        logger.info(f"_process_detection_results 호출됨: {len(boxes)}개 객체 감지")
+        # logger.info(f"_process_detection_results 호출됨: {len(boxes)}개 객체 감지")
         
         # 가장 큰 객체 찾기
         best_box = self._find_largest_box(boxes, frame_width, frame_height)
@@ -458,7 +459,7 @@ class VideoCamera:
             # 마지막 DB 업데이트 시간 갱신
             self._last_db_update = current_time
             self.stats['db_updates'] += 1
-            print(f"[DB_SAVE] DB 업데이트 완료: {saved_box_count}개 객체 감지 정보 저장 (총 {len(boxes)}개 중)")
+            # print(f"[DB_SAVE] DB 업데이트 완료: {saved_box_count}개 객체 감지 정보 저장 (총 {len(boxes)}개 중)")
             
         except Exception as e:
             logger.error(f"DB 업데이트 오류: {e}")
