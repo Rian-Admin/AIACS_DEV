@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>방위각 설정 - 조류충돌방지시스템</title>
+    <title>가드존 설정 - 조류충돌방지시스템</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -65,17 +65,7 @@
             padding-top: 2rem;
         }
         
-        /* 방위각 설정 페이지 특화 스타일 */
-        .azimuth-card {
-            margin-bottom: 1.5rem;
-            transition: all 0.3s ease;
-        }
-        
-        .azimuth-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-        }
-        
+        /* 카드 및 버튼 스타일 */
         .form-control:focus, .form-select:focus {
             border-color: #0d6efd;
             box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
@@ -94,51 +84,26 @@
             color: white;
         }
         
-        #azimuthForm {
-            background-color: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        /* Guard Zone 스타일 */
+        .guard-zone-container {
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 15px;
+            background-color: #f8f9fa;
         }
         
-        .compass-container {
-            width: 300px;
-            height: 300px;
+        #guardZoneCanvas {
+            background-color: #333;
+            border-radius: 5px;
+            display: block;
             margin: 0 auto;
-            position: relative;
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><circle cx="100" cy="100" r="99" fill="white" stroke="%232c3e50" stroke-width="1"/><text x="96" y="25" font-family="Arial" font-size="12" text-anchor="middle">N</text><text x="175" y="104" font-family="Arial" font-size="12" text-anchor="middle">E</text><text x="96" y="185" font-family="Arial" font-size="12" text-anchor="middle">S</text><text x="25" y="104" font-family="Arial" font-size="12" text-anchor="middle">W</text></svg>');
-            background-repeat: no-repeat;
-            background-size: 100% 100%;
+            cursor: crosshair;
         }
         
-        .compass-needle {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 4px;
-            height: 120px;
-            background-color: red;
-            transform-origin: bottom center;
-            transform: translate(-50%, -100%) rotate(0deg);
-            transition: transform 0.3s ease;
-            z-index: 2;
-        }
-        
-        .compass-needle::after {
-            content: "";
-            position: absolute;
-            bottom: -5px;
-            left: -8px;
-            width: 20px;
-            height: 20px;
-            background-color: #2c3e50;
-            border-radius: 50%;
-        }
-        
-        .degree-display {
-            font-size: 1.5rem;
-            font-weight: bold;
-            text-align: center;
+        .guard-zone-controls {
+            display: flex;
+            justify-content: space-between;
             margin-top: 10px;
         }
     </style>
@@ -150,7 +115,7 @@
             <h1 class="system-title">
                 <i class="fas fa-dove"></i> 조류충돌방지시스템
             </h1>
-            <p class="system-subtitle">방위각 설정 페이지</p>
+            <p class="system-subtitle">가드존 설정 페이지</p>
         </div>
     </header>
     
@@ -173,140 +138,56 @@
                 <a class="nav-link" href="/speaker-management/" target="_top">스피커 관리</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link active" href="/azimuth-setting/" target="_top">방위각 설정</a>
+                <a class="nav-link active" href="/azimuth-setting/" target="_top">가드존 설정</a>
             </li>
         </ul>
     </div>
 
     <div class="container container-main">
-        <h1 class="mb-4">방위각 설정</h1>
-        
+        <!-- Guard Zone 설정 섹션 추가 -->
         <div class="row mb-4">
             <div class="col-md-12">
-                <div id="azimuthForm">
-                    <h3 class="mb-3" id="formTitle">방위각 추가</h3>
-                    <form id="addAzimuthForm">
-                        <input type="hidden" id="editMode" value="false">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label for="target_id" class="form-label">대상 ID</label>
-                                        <input type="text" class="form-control" id="target_id" required>
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label for="target_type" class="form-label">대상 유형</label>
-                                        <select class="form-select" id="target_type" required>
-                                            <option value="wind_turbine">풍력 터빈</option>
-                                            <option value="camera">카메라</option>
-                                            <option value="speaker">스피커</option>
-                                            <option value="other">기타</option>
-                                        </select>
-                                    </div>
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-shield-alt"></i> Guard Zone 설정
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p>카메라 화면에서 객체 감지를 적용할 영역을 드래그하여 지정하세요. 지정된 영역 외의 부분에서는 객체가 감지되지 않습니다.</p>
+                        
+                        <div class="guard-zone-container">
+                            <canvas id="guardZoneCanvas" width="640" height="480"></canvas>
+                            <div class="guard-zone-controls">
+                                <div>
+                                    <button type="button" class="btn btn-secondary" id="resetGuardZone">초기화</button>
+                                    <button type="button" class="btn btn-info" id="previewGuardZone">미리보기</button>
                                 </div>
-                                <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label for="azimuth_degree" class="form-label">방위각 (도)</label>
-                                        <input type="number" class="form-control" id="azimuth_degree" min="0" max="359.99" step="0.01" required>
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label for="adjustment_reason" class="form-label">조정 사유</label>
-                                        <select class="form-select" id="adjustment_reason">
-                                            <option value="initial_setup">초기 설정</option>
-                                            <option value="recalibration">재보정</option>
-                                            <option value="maintenance">유지보수</option>
-                                            <option value="optimization">최적화</option>
-                                            <option value="other">기타</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="notes" class="form-label">메모</label>
-                                    <textarea class="form-control" id="notes" rows="3"></textarea>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="applied_date" class="form-label">적용 날짜</label>
-                                    <input type="date" class="form-control" id="applied_date" required>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <button type="submit" class="btn btn-primary" id="submitBtn">방위각 추가</button>
-                                    <button type="button" class="btn btn-secondary d-none" id="cancelBtn">취소</button>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="compass-container">
-                                    <div class="compass-needle" id="compassNeedle"></div>
-                                </div>
-                                <div class="degree-display" id="degreeDisplay">0°</div>
-                                <div class="mt-3">
-                                    <label for="azimuthSlider" class="form-label">방위각 조정</label>
-                                    <input type="range" class="form-range" id="azimuthSlider" min="0" max="359" value="0">
-                                </div>
-                                <div class="btn-group mt-3 d-flex">
-                                    <button type="button" class="btn btn-outline-primary" onclick="setAzimuth(0)">북(0°)</button>
-                                    <button type="button" class="btn btn-outline-primary" onclick="setAzimuth(90)">동(90°)</button>
-                                    <button type="button" class="btn btn-outline-primary" onclick="setAzimuth(180)">남(180°)</button>
-                                    <button type="button" class="btn btn-outline-primary" onclick="setAzimuth(270)">서(270°)</button>
-                                </div>
+                                <button type="button" class="btn btn-primary" id="saveGuardZone">Guard Zone 저장</button>
                             </div>
                         </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <div class="row" id="azimuthList">
-            <h3 class="mb-3">방위각 설정 목록</h3>
-            <!-- 방위각 카드가 여기에 생성됩니다 -->
-            {% if azimuths %}
-                {% for azimuth in azimuths %}
-                <div class="col-md-4 azimuth-card" data-id="{{ azimuth.id }}">
-                    <div class="card">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">{{ azimuth.target_id }}</h5>
-                            <span class="badge bg-info">{{ azimuth.target_type }}</span>
+                        
+                        <div class="form-check form-switch mt-3">
+                            <input class="form-check-input" type="checkbox" id="enableGuardZone">
+                            <label class="form-check-label" for="enableGuardZone">Guard Zone 활성화</label>
                         </div>
-                        <div class="card-body">
-                            <p class="h3 text-center mb-3">{{ azimuth.azimuth_degree }}°</p>
-                            <div class="d-flex justify-content-center mb-3">
-                                <div style="width: 100px; height: 100px; position: relative; border-radius: 50%; border: 2px solid #ddd;">
-                                    <div style="position: absolute; top: 50%; left: 50%; width: 2px; height: 40px; background-color: red; transform-origin: bottom center; transform: translate(-50%, -100%) rotate({{ azimuth.azimuth_degree }}deg);"></div>
+                        
+                        <div class="alert alert-info mt-3">
+                            <i class="fas fa-info-circle"></i> 카메라를 선택하면 해당 카메라의 실시간 영상이 표시됩니다.
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="guardZoneCamera">카메라 선택</label>
+                                    <select class="form-select" id="guardZoneCamera">
+                                        <option value="">카메라를 선택하세요</option>
+                                        <!-- 카메라 목록은 자바스크립트로 로드됩니다 -->
+                                    </select>
                                 </div>
-                            </div>
-                            <p><strong>조정 사유:</strong> {{ azimuth.adjustment_reason }}</p>
-                            <p><strong>적용 날짜:</strong> {{ azimuth.applied_date }}</p>
-                            {% if azimuth.notes %}<p><strong>메모:</strong> {{ azimuth.notes }}</p>{% endif %}
-                            <div class="d-flex justify-content-between mt-3">
-                                <button class="btn btn-sm btn-primary edit-btn" data-id="{{ azimuth.id }}">편집</button>
-                                <button class="btn btn-sm btn-danger delete-btn" data-id="{{ azimuth.id }}">삭제</button>
                             </div>
                         </div>
                     </div>
-                </div>
-                {% endfor %}
-            {% else %}
-                <div class="col-12 text-center">
-                    <p>등록된 방위각 설정이 없습니다.</p>
-                </div>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- 삭제 확인 모달 -->
-    <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">방위각 설정 삭제 확인</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p>정말로 이 방위각 설정을 삭제하시겠습니까?</p>
-                    <p class="text-danger">이 작업은 되돌릴 수 없습니다.</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
-                    <button type="button" class="btn btn-danger" id="confirmDelete">삭제</button>
                 </div>
             </div>
         </div>
@@ -319,246 +200,270 @@
     
     <script>
         $(document).ready(function() {
-            // 현재 날짜를 기본값으로 설정
-            const today = new Date().toISOString().split('T')[0];
-            $('#applied_date').val(today);
+            // ========== GUARD ZONE 관련 코드 ==========
             
-            // 기존 DOM 요소를 jQuery 방식으로 사용하도록 변경
-            const $form = $('#addAzimuthForm');
-            const $formTitle = $('#formTitle');
-            const $submitBtn = $('#submitBtn');
-            const $cancelBtn = $('#cancelBtn');
-            const $editMode = $('#editMode');
-            const $targetIdInput = $('#target_id');
+            // Canvas 및 관련 변수 초기화
+            const canvas = document.getElementById('guardZoneCanvas');
+            const ctx = canvas.getContext('2d');
+            let isDrawing = false;
+            let startX = 0;
+            let startY = 0;
             
-            // 현재 편집 중인 방위각 ID
-            let currentAzimuthId = null;
+            // Guard Zone 데이터
+            let guardZones = [];
+            let currentGuardZone = null;
+            let selectedCameraId = '';
+            let imageObj = null;
             
-            // 방위각 추가 폼 제출
-            $form.on('submit', function(e) {
-                e.preventDefault();
-                
-                // 폼 데이터 수집
-                const formData = {
-                    target_id: $('#target_id').val(),
-                    target_type: $('#target_type').val(),
-                    azimuth_degree: parseFloat($('#azimuth_degree').val()),
-                    adjustment_reason: $('#adjustment_reason').val(),
-                    notes: $('#notes').val(),
-                    applied_date: $('#applied_date').val()
-                };
-                
-                // 편집 모드인지 확인
-                const isEditMode = $editMode.val() === 'true';
-                
-                if (isEditMode) {
-                    // 방위각 업데이트 API 호출
-                    $.ajax({
-                        url: `/api/azimuth/update/${currentAzimuthId}/`,
-                        type: 'POST',
-                        contentType: 'application/json',
-                        data: JSON.stringify(formData),
-                        success: function(response) {
-                            if (response.status === 'success') {
-                                // 성공 알림 표시
-                                showAlert('방위각 설정이 성공적으로 업데이트되었습니다. 페이지를 새로고침합니다...', 'success');
-                                
-                                // 1초 후 페이지 새로고침
-                                setTimeout(function() {
-                                    location.reload();
-                                }, 1000);
-                            } else {
-                                showAlert('방위각 업데이트 실패: ' + response.message, 'danger');
-                            }
-                        },
-                        error: function(xhr) {
-                            let errorMsg = '방위각 업데이트 중 오류가 발생했습니다';
-                            try {
-                                errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
-                            } catch(e) {}
-                            showAlert(errorMsg, 'danger');
-                        }
-                    });
+            // Canvas 초기화
+            function clearCanvas() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                if (imageObj) {
+                    ctx.drawImage(imageObj, 0, 0, canvas.width, canvas.height);
                 } else {
-                    // 방위각 추가 API 호출
-                    $.ajax({
-                        url: '/api/azimuth/add/',
-                        type: 'POST',
-                        contentType: 'application/json',
-                        data: JSON.stringify(formData),
-                        success: function(response) {
-                            if (response.status === 'success') {
-                                // 성공 알림 표시
-                                showAlert('방위각 설정이 성공적으로 추가되었습니다. 페이지를 새로고침합니다...', 'success');
-                                
-                                // 1초 후 페이지 새로고침
-                                setTimeout(function() {
-                                    location.reload();
-                                }, 1000);
-                            } else {
-                                showAlert('방위각 추가 실패: ' + response.message, 'danger');
-                            }
-                        },
-                        error: function(xhr) {
-                            let errorMsg = '방위각 추가 중 오류가 발생했습니다';
-                            try {
-                                errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
-                            } catch(e) {}
-                            showAlert(errorMsg, 'danger');
-                        }
-                    });
+                    // 이미지가 없는 경우 기본 배경
+                    ctx.fillStyle = '#333';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
                 }
+            }
+            
+            // Guard Zone 그리기
+            function drawGuardZones() {
+                clearCanvas();
+                
+                // 모든 Guard Zone 그리기
+                guardZones.forEach(function(zone, index) {
+                    ctx.strokeStyle = '#00ff00';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(zone.x, zone.y, zone.width, zone.height);
+                    
+                    // 반투명 색상으로 영역 채우기
+                    ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+                    ctx.fillRect(zone.x, zone.y, zone.width, zone.height);
+                    
+                    // Zone 번호 표시
+                    ctx.fillStyle = 'white';
+                    ctx.font = '16px Arial';
+                    ctx.fillText(`Zone ${index+1}`, zone.x + 5, zone.y + 20);
+                });
+                
+                // 현재 그리고 있는 Guard Zone
+                if (currentGuardZone) {
+                    ctx.strokeStyle = '#ffff00';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(
+                        currentGuardZone.x, 
+                        currentGuardZone.y, 
+                        currentGuardZone.width, 
+                        currentGuardZone.height
+                    );
+                    
+                    // 반투명 색상으로 영역 채우기
+                    ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
+                    ctx.fillRect(
+                        currentGuardZone.x, 
+                        currentGuardZone.y, 
+                        currentGuardZone.width, 
+                        currentGuardZone.height
+                    );
+                }
+            }
+            
+            // Canvas 이벤트 핸들러
+            canvas.addEventListener('mousedown', function(e) {
+                const rect = canvas.getBoundingClientRect();
+                startX = e.clientX - rect.left;
+                startY = e.clientY - rect.top;
+                isDrawing = true;
+                
+                currentGuardZone = {
+                    x: startX,
+                    y: startY,
+                    width: 0,
+                    height: 0
+                };
             });
             
-            // 편집 버튼 클릭 이벤트
-            $('.edit-btn').on('click', function() {
-                const azimuthId = $(this).data('id');
-                setEditMode(true, azimuthId);
+            canvas.addEventListener('mousemove', function(e) {
+                if (!isDrawing) return;
                 
-                // 방위각 정보 가져오기 API 호출
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                currentGuardZone.width = x - startX;
+                currentGuardZone.height = y - startY;
+                
+                drawGuardZones();
+            });
+            
+            canvas.addEventListener('mouseup', function() {
+                if (!isDrawing) return;
+                
+                isDrawing = false;
+                
+                // 가로나 세로 길이가 음수인 경우 조정
+                if (currentGuardZone.width < 0) {
+                    currentGuardZone.x += currentGuardZone.width;
+                    currentGuardZone.width = Math.abs(currentGuardZone.width);
+                }
+                
+                if (currentGuardZone.height < 0) {
+                    currentGuardZone.y += currentGuardZone.height;
+                    currentGuardZone.height = Math.abs(currentGuardZone.height);
+                }
+                
+                // Guard Zone 목록에 추가
+                guardZones.push({...currentGuardZone});
+                currentGuardZone = null;
+                
+                drawGuardZones();
+            });
+            
+            // 초기화 버튼
+            $('#resetGuardZone').on('click', function() {
+                guardZones = [];
+                currentGuardZone = null;
+                drawGuardZones();
+            });
+            
+            // Guard Zone 저장 버튼
+            $('#saveGuardZone').on('click', function() {
+                if (guardZones.length === 0) {
+                    showAlert('저장할 Guard Zone이 없습니다. 먼저 영역을 지정해주세요.', 'warning');
+                    return;
+                }
+                
+                if (!selectedCameraId) {
+                    showAlert('카메라를 선택해주세요.', 'warning');
+                    return;
+                }
+                
+                // Guard Zone 정규화 (0~1 범위로 변환)
+                const normalizedZones = guardZones.map(zone => ({
+                    x: zone.x / canvas.width,
+                    y: zone.y / canvas.height,
+                    width: zone.width / canvas.width,
+                    height: zone.height / canvas.height
+                }));
+                
+                // API로 Guard Zone 저장
                 $.ajax({
-                    url: `/api/azimuth/get/${azimuthId}/`,
+                    url: '/api/yolo/set-guard-zone/',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        camera_id: selectedCameraId,
+                        guard_zones: normalizedZones,
+                        enabled: $('#enableGuardZone').is(':checked')
+                    }),
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            showAlert('Guard Zone이 성공적으로 저장되었습니다.', 'success');
+                        } else {
+                            showAlert('Guard Zone 저장 실패: ' + response.message, 'danger');
+                        }
+                    },
+                    error: function(xhr) {
+                        let errorMsg = 'Guard Zone 저장 중 오류가 발생했습니다';
+                        try {
+                            errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                        } catch(e) {}
+                        showAlert(errorMsg, 'danger');
+                    }
+                });
+            });
+            
+            // 카메라 선택 시 이벤트
+            $('#guardZoneCamera').on('change', function() {
+                selectedCameraId = $(this).val();
+                if (!selectedCameraId) return;
+                
+                // 기존 Guard Zone 초기화
+                guardZones = [];
+                currentGuardZone = null;
+                
+                // 선택한 카메라의 스냅샷 가져오기
+                imageObj = new Image();
+                imageObj.onload = function() {
+                    drawGuardZones();
+                };
+                imageObj.src = `/camera/snapshot/${selectedCameraId}/`;
+                
+                // 카메라의 기존 Guard Zone 설정 불러오기
+                $.ajax({
+                    url: `/api/yolo/get-guard-zone/${selectedCameraId}/`,
                     type: 'GET',
                     success: function(response) {
-                        if (response.status === 'success') {
-                            const azimuth = response.azimuth;
+                        if (response.status === 'success' && response.guard_zones) {
+                            // 정규화된 Guard Zone을 다시 캔버스 크기로 변환
+                            guardZones = response.guard_zones.map(zone => ({
+                                x: zone.x * canvas.width,
+                                y: zone.y * canvas.height,
+                                width: zone.width * canvas.width,
+                                height: zone.height * canvas.height
+                            }));
                             
-                            // 폼에 방위각 정보 채우기
-                            $('#target_id').val(azimuth.target_id);
-                            $('#target_type').val(azimuth.target_type);
-                            $('#azimuth_degree').val(azimuth.azimuth_degree);
-                            $('#adjustment_reason').val(azimuth.adjustment_reason);
-                            $('#notes').val(azimuth.notes);
-                            $('#applied_date').val(azimuth.applied_date);
+                            // Guard Zone 활성화 상태 설정
+                            $('#enableGuardZone').prop('checked', response.enabled);
                             
-                            // 방위각 슬라이더와 나침반 바늘 업데이트
-                            updateCompassNeedle(azimuth.azimuth_degree);
-                            $('#azimuthSlider').val(Math.round(azimuth.azimuth_degree));
-                            
-                            // 폼으로 스크롤
-                            $('html, body').animate({
-                                scrollTop: $form.offset().top - 100
-                            }, 500);
-                        } else {
-                            showAlert('방위각 정보를 가져오는데 실패했습니다: ' + response.message, 'danger');
+                            drawGuardZones();
                         }
                     },
-                    error: function(xhr) {
-                        let errorMsg = '방위각 정보를 가져오는 중 오류가 발생했습니다';
-                        try {
-                            errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
-                        } catch(e) {}
-                        showAlert(errorMsg, 'danger');
+                    error: function() {
+                        showAlert('카메라의 Guard Zone 설정을 불러오는데 실패했습니다.', 'warning');
                     }
                 });
             });
             
-            // 삭제 버튼 클릭 이벤트
-            $('.delete-btn').on('click', function() {
-                const azimuthId = $(this).data('id');
-                // 삭제할 방위각 ID를 삭제 버튼에 데이터로 저장
-                $('#confirmDelete').data('id', azimuthId);
-                $('#deleteModal').modal('show');
+            // 미리보기 버튼
+            $('#previewGuardZone').on('click', function() {
+                if (!selectedCameraId) {
+                    showAlert('카메라를 선택해주세요.', 'warning');
+                    return;
+                }
+                
+                if (guardZones.length === 0) {
+                    showAlert('미리볼 Guard Zone이 없습니다. 먼저 영역을 지정해주세요.', 'warning');
+                    return;
+                }
+                
+                // 새 창에서 미리보기 열기
+                const previewUrl = `/camera/preview-guard-zone/${selectedCameraId}/`;
+                window.open(previewUrl, 'guardZonePreview', 'width=800,height=600');
             });
             
-            // 삭제 확인 버튼 클릭 이벤트
-            $('#confirmDelete').on('click', function() {
-                const azimuthId = $(this).data('id');
-                
-                // 방위각 삭제 API 호출
+            // 카메라 목록 로드
+            function loadCameras() {
                 $.ajax({
-                    url: `/api/azimuth/delete/${azimuthId}/`,
-                    type: 'POST',
+                    url: '/api/cameras/',
+                    type: 'GET',
                     success: function(response) {
-                        $('#deleteModal').modal('hide');
+                        const $select = $('#guardZoneCamera');
+                        $select.empty();
+                        $select.append('<option value="">카메라를 선택하세요</option>');
                         
-                        if (response.status === 'success') {
-                            // 성공 알림 표시
-                            showAlert('방위각 설정이 성공적으로 삭제되었습니다. 페이지를 새로고침합니다...', 'success');
-                            
-                            // 1초 후 페이지 새로고침
-                            setTimeout(function() {
-                                location.reload();
-                            }, 1000);
+                        if (response.cameras && response.cameras.length > 0) {
+                            response.cameras.forEach(function(camera) {
+                                const cameraName = camera.installation_direction || `카메라 ${camera.camera_id}`;
+                                const cameraUrl = camera.rtsp_address || "";
+                                $select.append(`<option value="${camera.camera_id}">${cameraName} (${cameraUrl})</option>`);
+                            });
                         } else {
-                            showAlert('방위각 삭제 실패: ' + response.message, 'danger');
+                            $select.append('<option value="" disabled>등록된 카메라가 없습니다</option>');
                         }
                     },
-                    error: function(xhr) {
-                        $('#deleteModal').modal('hide');
-                        
-                        let errorMsg = '방위각 삭제 중 오류가 발생했습니다';
-                        try {
-                            errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
-                        } catch(e) {}
-                        showAlert(errorMsg, 'danger');
+                    error: function() {
+                        showAlert('카메라 목록을 불러오는데 실패했습니다.', 'danger');
                     }
                 });
-            });
-            
-            // 취소 버튼 클릭 이벤트
-            $cancelBtn.on('click', function() {
-                resetForm();
-            });
-            
-            // 편집 모드 설정 함수
-            function setEditMode(isEdit, azimuthId) {
-                $editMode.val(isEdit ? 'true' : 'false');
-                currentAzimuthId = azimuthId;
-                
-                if (isEdit) {
-                    $formTitle.text('방위각 편집');
-                    $submitBtn.text('변경사항 저장');
-                    $cancelBtn.removeClass('d-none');
-                } else {
-                    $formTitle.text('방위각 추가');
-                    $submitBtn.text('방위각 추가');
-                    $cancelBtn.addClass('d-none');
-                }
             }
             
-            // 폼 초기화 함수
-            function resetForm() {
-                $form[0].reset();
-                setEditMode(false, null);
-                currentAzimuthId = null;
-                
-                // 방위각 슬라이더와 나침반 바늘 초기화
-                updateCompassNeedle(0);
-                $('#azimuthSlider').val(0);
-                $('#azimuth_degree').val(0);
-                
-                // 현재 날짜를 다시 설정
-                $('#applied_date').val(today);
-            }
+            // 페이지 로드 시 카메라 목록 로드
+            loadCameras();
             
-            // 방위각 슬라이더 이벤트
-            $('#azimuthSlider').on('input', function() {
-                const degree = parseInt($(this).val());
-                $('#azimuth_degree').val(degree);
-                updateCompassNeedle(degree);
-            });
-            
-            // 방위각 입력 필드 이벤트
-            $('#azimuth_degree').on('input', function() {
-                let degree = parseFloat($(this).val());
-                if (isNaN(degree)) {
-                    degree = 0;
-                } else if (degree < 0) {
-                    degree = 0;
-                } else if (degree > 359.99) {
-                    degree = 359.99;
-                }
-                
-                updateCompassNeedle(degree);
-                $('#azimuthSlider').val(Math.round(degree));
-            });
-            
-            // 나침반 바늘 업데이트 함수
-            function updateCompassNeedle(degree) {
-                $('#compassNeedle').css('transform', `translate(-50%, -100%) rotate(${degree}deg)`);
-                $('#degreeDisplay').text(`${degree}°`);
-            }
+            // 초기 Canvas 설정
+            clearCanvas();
             
             // 알림 표시 함수
             function showAlert(message, type, duration) {
@@ -580,23 +485,7 @@
                     alertDiv.alert('close');
                 }, duration);
             }
-            
-            // 페이지 로드 시 방위각 슬라이더 초기값 설정
-            updateCompassNeedle(0);
         });
-        
-        // 방위각 빠른 설정 버튼
-        function setAzimuth(degree) {
-            $('#azimuth_degree').val(degree);
-            $('#azimuthSlider').val(degree);
-            updateCompassNeedle(degree);
-        }
-        
-        // 나침반 바늘 업데이트 (전역 함수)
-        function updateCompassNeedle(degree) {
-            $('#compassNeedle').css('transform', `translate(-50%, -100%) rotate(${degree}deg)`);
-            $('#degreeDisplay').text(`${degree}°`);
-        }
     </script>
 </body>
 </html> 

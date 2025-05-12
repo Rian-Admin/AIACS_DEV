@@ -7,7 +7,49 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 logger.propagate = False
 
-def draw_detections(frame, results, model_names):
+def draw_guard_zones(frame, detector, camera_id):
+    """가드존을 프레임에 빨간색 테두리로 표시합니다."""
+    if frame is None or detector is None or camera_id is None:
+        return frame
+    
+    # 카메라 ID 문자열 변환
+    camera_id_str = str(camera_id)
+    
+    # 가드존 정보 가져오기
+    if not hasattr(detector, 'guard_zones') or camera_id_str not in detector.guard_zones:
+        return frame
+    
+    # 가드존이 활성화되어 있는지 확인
+    is_enabled = detector.guard_zones_enabled.get(camera_id_str, False)
+    if not is_enabled:
+        return frame
+    
+    # 프레임 크기
+    frame_height, frame_width = frame.shape[:2]
+    
+    # 모든 가드존 그리기
+    zones = detector.guard_zones[camera_id_str]
+    for zone_idx, zone in enumerate(zones):
+        # 정규화된 좌표를 실제 픽셀 좌표로 변환
+        x = int(zone['x'] * frame_width)
+        y = int(zone['y'] * frame_height)
+        w = int(zone['width'] * frame_width)
+        h = int(zone['height'] * frame_height)
+        
+        # 빨간색 테두리로 가드존 그리기
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
+        
+        # 가드존 번호 표시
+        cv2.putText(frame, f"Zone {zone_idx+1}", 
+                   (x + 5, y + 25), 
+                   cv2.FONT_HERSHEY_COMPLEX, 
+                   0.7, 
+                   (0, 0, 255), 
+                   2)
+    
+    return frame
+
+def draw_detections(frame, results, model_names, detector=None, camera_id=None):
     """감지된 객체에 대한 바운딩 박스를 그립니다."""
     if frame is None:
         logger.warning("프레임이 None입니다")
@@ -27,6 +69,9 @@ def draw_detections(frame, results, model_names):
         box_count = len(results.boxes)
         if box_count == 0:
             logger.debug("감지된 객체가 없습니다")
+            # 객체가 없어도 가드존은 그리기
+            if detector is not None and camera_id is not None:
+                return draw_guard_zones(frame, detector, camera_id)
             return frame
     except:
         logger.warning("boxes 객체가 iterable이 아닙니다")
@@ -92,5 +137,9 @@ def draw_detections(frame, results, model_names):
             
         except Exception as e:
             logger.error(f"박스 {i} 처리 중 오류: {e}")
+    
+    # 바운딩 박스 그린 후 가드존 그리기
+    if detector is not None and camera_id is not None:
+        frame = draw_guard_zones(frame, detector, camera_id)
     
     return frame

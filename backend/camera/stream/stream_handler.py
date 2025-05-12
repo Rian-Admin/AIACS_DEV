@@ -35,7 +35,7 @@ class StreamHandler:
         # RTSP 스트림인 경우 저지연 모드를 위한 환경 변수 설정
         if self.is_rtsp:
             # 간결한 RTSP 설정으로 변경
-            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
             # URL에 쿼리 파라미터(chnid 등)가 있는지 확인하고 출력
             if '?' in url:
                 print(f"카메라 {camera_number}: 쿼리 파라미터 포함된 RTSP URL 사용 - {url}")

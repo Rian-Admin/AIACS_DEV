@@ -102,7 +102,9 @@ class VideoCamera:
                     
                     # 새 감지 결과 가져오기
                     if self.stream_handler:
-                        result = self.detector.get_latest_result(self.camera_number)
+                        # 카메라 ID를 문자열로 변환하여 일관성 유지
+                        camera_id_str = str(self.camera_number)
+                        result = self.detector.get_latest_result(camera_id_str)
                         
                         # 새 결과가 있으면 처리
                         if result is not None and result != self._last_processed_result:
@@ -115,7 +117,9 @@ class VideoCamera:
                                 if current_time - self._last_db_update >= self._db_update_interval:
                                     if hasattr(result, 'boxes') and hasattr(result, 'orig_shape'):
                                         height, width = result.orig_shape
+                                        print(f"[ASYNC] 카메라 {camera_id_str}: DB 업데이트")
                                         self._process_detection_results(result.boxes, width, height)
+                                        self._last_db_update = current_time
                             
                             # 통계 업데이트
                             self.stats['detection_count'] += 1
@@ -165,13 +169,32 @@ class VideoCamera:
             self._last_valid_frame = frame.copy()
             self._last_frame_time = time.time()
             
+            # 카메라 ID를 문자열로 전달하여 가드존 필터링이 적용되도록 함
+            camera_id_str = str(self.camera_number)
+            
             # 동기식으로 객체 감지 수행 (현재 프레임에 대해 직접 감지)
             if self.detector and self.detector.model is not None:
-                result = self.detector.detect_objects(frame.copy())
+                # 프레임 크기 저장
+                height, width = frame.shape[:2]
+                
+                # 가드존 시각화 (활성화된 경우)
+                has_guard_zone = (camera_id_str is not None and 
+                    camera_id_str in self.detector.guard_zones and 
+                    len(self.detector.guard_zones[camera_id_str]) > 0)
+                
+                is_enabled = self.detector.guard_zones_enabled.get(camera_id_str, False)
+                
+                if has_guard_zone and is_enabled:
+                    # 가드존 시각화
+                    frame = self.detector._draw_guard_zones(frame, camera_id_str, width, height)
+                
+                # 객체 감지 수행
+                result = self.detector.detect_objects(frame.copy(), camera_id=camera_id_str)
                 
                 # 감지 결과가 있으면 바운딩 박스 그리기
                 if result and hasattr(result, 'boxes') and hasattr(result.boxes, '__len__') and len(result.boxes) > 0:
                     try:
+                        print(f"카메라 {camera_id_str}: {len(result.boxes)}개 객체 감지됨")
                         frame = draw_detections(frame, result, self.detector.model.names)
                         
                         # 감지 결과 저장 (DB 업데이트용)
@@ -184,11 +207,14 @@ class VideoCamera:
                                 if hasattr(result, 'boxes') and hasattr(result, 'orig_shape'):
                                     # 프레임 크기 저장
                                     height, width = result.orig_shape
-                                    # DB 업데이트를 위한 플래그 설정 (스레드가 처리할 수 있도록)
-                                    self._last_processed_result = result
+                                    # DB 업데이트를 위한 결과 처리 직접 호출
+                                    self._process_detection_results(result.boxes, width, height)
+                                    self._last_db_update = current_time
                         
                     except Exception as e:
                         logger.error(f"바운딩 박스 그리기 오류: {e}")
+                        import traceback
+                        logger.error(traceback.format_exc())
             
             # 감지 FPS 표시
             if hasattr(self.detector, 'get_average_fps'):
@@ -307,11 +333,34 @@ class VideoCamera:
             
             # 카메라 ID가 유효한지 확인
             camera_id = self.camera_number
-            camera_exists = Camera.objects.filter(camera_id=camera_id).exists()
             
-            if not camera_exists:
-                logger.warning(f"카메라 ID {camera_id}가 데이터베이스에 존재하지 않습니다. 감지 정보 저장을 건너뜁니다.")
-                return  # 감지 정보 저장 건너뛰기
+            # Camera 모델이 존재하는지 확인
+            try:
+                camera_exists = Camera.objects.filter(camera_id=camera_id).exists()
+                if not camera_exists:
+                    print(f"[DB_SAVE] 경고: 카메라 ID {camera_id}가 데이터베이스에 존재하지 않습니다.")
+                    # DB에 카메라 정보 추가 시도
+                    try:
+                        print(f"[DB_SAVE] 카메라 {camera_id} 정보를 DB에 자동 추가 시도")
+                        new_camera = Camera(
+                            camera_id=camera_id,
+                            rtsp_address=self.rtsp_url or f"카메라 {camera_id}",
+                            status="active",
+                            installation_direction=f"방향 {camera_id}",
+                            viewing_angle=0
+                        )
+                        new_camera.save()
+                        print(f"[DB_SAVE] 카메라 {camera_id} 정보가 DB에 자동 추가되었습니다.")
+                        camera_exists = True
+                    except Exception as cam_err:
+                        print(f"[DB_SAVE] 카메라 자동 등록 실패: {cam_err}")
+                
+                if not camera_exists:
+                    print(f"[DB_SAVE] 카메라 DB 등록 실패. 감지 정보 저장 건너뜁니다.")
+                    return  # 감지 정보 저장 건너뛰기
+            except Exception as db_check_err:
+                print(f"[DB_SAVE] 카메라 DB 조회 오류: {db_check_err}")
+                # DB 조회 실패해도 저장 시도
             
             # DetectionInfo 테이블 업데이트
             detection_data = {
@@ -323,7 +372,11 @@ class VideoCamera:
             }
             
             # DB에 DetectionInfo 저장
-            detection_info = self.db.save_detection_info(detection_data)
+            try:
+                detection_info = self.db.save_detection_info(detection_data)
+            except Exception as det_err:
+                print(f"[DB_SAVE] DetectionInfo 저장 실패: {det_err}")
+                detection_info = None
             
             # 각 객체의 바운딩 박스 정보를 BBInfo 테이블에 저장
             saved_box_count = 0
@@ -374,18 +427,26 @@ class VideoCamera:
                         }
                         
                         # DB에 BBInfo 저장
-                        self.db.save_bb_info(bb_data)
-                        saved_box_count += 1
+                        try:
+                            if detection_info:  # 부모 레코드가 있을 때만 저장
+                                self.db.save_bb_info(bb_data)
+                                saved_box_count += 1
+                            else:
+                                logger.debug(f"BBInfo 저장 건너뜀 (부모 레코드 없음): 객체 {i+1}/{len(boxes)}")
+                        except Exception as bb_err:
+                            logger.error(f"BBInfo 저장 실패: 객체 {i+1}/{len(boxes)}, 오류: {bb_err}")
                 except Exception as e:
                     logger.error(f"바운딩 박스 정보 저장 오류 (박스 {i}): {e}")
             
             # 마지막 DB 업데이트 시간 갱신
             self._last_db_update = current_time
             self.stats['db_updates'] += 1
-            logger.info(f"DB 업데이트 완료: {saved_box_count}개 객체 감지 정보 저장 (총 {len(boxes)}개 중)")
+            print(f"[DB_SAVE] DB 업데이트 완료: {saved_box_count}개 객체 감지 정보 저장 (총 {len(boxes)}개 중)")
             
         except Exception as e:
             logger.error(f"DB 업데이트 오류: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
     
     def _find_largest_box(self, boxes, frame_width, frame_height):
         """가장 큰 객체의 바운딩 박스 찾기"""

@@ -1,4 +1,4 @@
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Count, F
 import json
@@ -11,6 +11,8 @@ from datetime import datetime
 from ..yolo.detector import ObjectDetector
 from ..hardware.bird_controller import BirdController
 from ..hardware.ptz_manager import PTZManager
+import numpy as np
+import cv2
 
 # 로그 비활성화
 logger = logging.getLogger(__name__)
@@ -212,13 +214,207 @@ def set_yolo_conf(request):
                 'message': 'conf 값 설정 실패'
             }, status=500)
             
-    except Exception as e:
-        logger.error(f"YOLO 설정 변경 오류: {e}")
+    except json.JSONDecodeError:
         return JsonResponse({
-            'status': 'error',
-            'message': str(e)
+            'status': 'error', 
+            'message': '잘못된 JSON 형식'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"conf 설정 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
         }, status=500)
+
+@csrf_exempt
+def set_guard_zone(request):
+    """YOLO 모델의 Guard Zone 설정"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST 요청만 허용됩니다'}, status=405)
         
+    try:
+        # 요청에서 데이터 파싱
+        data = json.loads(request.body)
+        camera_id = data.get('camera_id')
+        guard_zones = data.get('guard_zones', [])
+        enabled = data.get('enabled', True)
+        
+        print(f"[API] Guard Zone 설정 요청: 카메라={camera_id}, 영역={len(guard_zones)}개, 활성화={enabled}")
+        
+        if not camera_id:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '카메라 ID가 필요합니다'
+            }, status=400)
+            
+        # 데이터 유효성 검증
+        if not isinstance(guard_zones, list):
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'guard_zones는 배열이어야 합니다'
+            }, status=400)
+            
+        # 각 guard zone의 좌표 검증
+        for i, zone in enumerate(guard_zones):
+            if not isinstance(zone, dict):
+                return JsonResponse({
+                    'status': 'error', 
+                    'message': f'guard_zones[{i}]는 객체여야 합니다'
+                }, status=400)
+                
+            for key in ['x', 'y', 'width', 'height']:
+                if key not in zone:
+                    return JsonResponse({
+                        'status': 'error', 
+                        'message': f'guard_zones[{i}]에 {key} 키가 없습니다'
+                    }, status=400)
+                    
+                try:
+                    value = float(zone[key])
+                    if not (0.0 <= value <= 1.0):
+                        return JsonResponse({
+                            'status': 'error', 
+                            'message': f'guard_zones[{i}].{key}는 0.0~1.0 사이의 값이어야 합니다'
+                        }, status=400)
+                    
+                    # 값을 숫자로 저장
+                    zone[key] = value
+                except (ValueError, TypeError):
+                    return JsonResponse({
+                        'status': 'error', 
+                        'message': f'guard_zones[{i}].{key}는 숫자여야 합니다'
+                    }, status=400)
+            
+        # YOLO 모델 가져오기
+        detector = ObjectDetector.get_instance()
+        if detector is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'YOLO 모델을 초기화할 수 없습니다'
+            }, status=500)
+            
+        # Guard Zone 설정
+        result = detector.set_guard_zone(camera_id, guard_zones, enabled)
+        
+        if result:
+            logger.info(f"YOLO Guard Zone 설정됨: 카메라 {camera_id}, 영역 {len(guard_zones)}개, 활성화: {enabled}")
+            
+            # 설정 결과 확인
+            current_settings = detector.get_guard_zone(camera_id)
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Guard Zone이 성공적으로 설정되었습니다 ({len(guard_zones)}개 영역)',
+                'details': {
+                    'camera_id': camera_id,
+                    'zones_count': len(guard_zones),
+                    'enabled': enabled,
+                    'current_settings': current_settings
+                }
+            })
+        else:
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'Guard Zone 설정 실패'
+            }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'status': 'error', 
+            'message': '잘못된 JSON 형식'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"Guard Zone 설정 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
+        }, status=500)
+
+def get_guard_zone(request, camera_id):
+    """카메라의 Guard Zone 정보 가져오기"""
+    try:
+        # YOLO 모델 가져오기
+        detector = ObjectDetector.get_instance()
+        if detector is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'YOLO 모델을 초기화할 수 없습니다'
+            }, status=500)
+            
+        # Guard Zone 정보 가져오기
+        guard_zone_info = detector.get_guard_zone(camera_id)
+        
+        # 결과 반환
+        return JsonResponse({
+            'status': 'success',
+            'guard_zones': guard_zone_info['guard_zones'],
+            'enabled': guard_zone_info['enabled']
+        })
+        
+    except Exception as e:
+        logger.error(f"Guard Zone 정보 조회 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
+        }, status=500)
+
+def preview_guard_zone(request, camera_id):
+    """Guard Zone 미리보기 - 가드존이 그려진 프레임 직접 반환"""
+    try:
+        # YOLO 모델 인스턴스 가져오기
+        detector = ObjectDetector.get_instance()
+        if detector is None:
+            empty_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(empty_frame, "YOLO 모델 초기화 불가", 
+                       (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            _, jpeg = cv2.imencode('.jpg', empty_frame)
+            return HttpResponse(jpeg.tobytes(), content_type='image/jpeg')
+            
+        # 카메라 인스턴스 가져오기
+        from ..frame.video_camera import get_cached_camera
+        camera = get_cached_camera(camera_id)
+        
+        if camera is None:
+            empty_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(empty_frame, f"카메라 {camera_id}: 찾을 수 없음", 
+                       (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            _, jpeg = cv2.imencode('.jpg', empty_frame)
+            return HttpResponse(jpeg.tobytes(), content_type='image/jpeg')
+            
+        # 프레임 가져오기
+        frame = None
+        if hasattr(camera, 'stream_handler') and camera.stream_handler:
+            frame = camera.stream_handler.get_frame_from_buffer()
+        
+        if frame is None:
+            empty_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(empty_frame, f"카메라 {camera_id}: 프레임 없음", 
+                       (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            _, jpeg = cv2.imencode('.jpg', empty_frame)
+            return HttpResponse(jpeg.tobytes(), content_type='image/jpeg')
+        
+        # 프레임 크기 가져오기
+        height, width = frame.shape[:2]
+        
+        # 가드존이 그려진 프레임 가져오기
+        visualized_frame = detector._draw_guard_zones(frame, str(camera_id), width, height)
+        
+        # JPEG으로 인코딩하여 반환
+        _, jpeg = cv2.imencode('.jpg', visualized_frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        return HttpResponse(jpeg.tobytes(), content_type='image/jpeg')
+        
+    except Exception as e:
+        logger.error(f"가드존 미리보기 생성 오류: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        
+        # 오류 발생 시 오류 메시지와 함께 빈 프레임 반환
+        empty_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        cv2.putText(empty_frame, f"오류: {str(e)}", 
+                   (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        _, jpeg = cv2.imencode('.jpg', empty_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        return HttpResponse(jpeg.tobytes(), content_type='image/jpeg')
+
 @csrf_exempt
 def get_yolo_info(request):
     """YOLO 모델 정보 조회"""
