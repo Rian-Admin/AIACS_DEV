@@ -335,19 +335,22 @@
         <!-- 탭 네비게이션 -->
         <ul class="nav nav-tabs mb-3">
             <li class="nav-item">
-                <a class="nav-link active" href="/" target="_top">메인 대시보드</a>
+                <a class="nav-link active" href="/">메인 대시보드</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="/camera-management/" target="_top">카메라 관리</a>
+                <a class="nav-link" href="/camera-management/">카메라 관리</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="/db-management/" target="_top">데이터베이스 관리</a>
+                <a class="nav-link" href="/db-management/">데이터베이스 관리</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="/model-management/" target="_top">모델 관리</a>
+                <a class="nav-link" href="/model-management/">모델 관리</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="/speaker-management/" target="_top">스피커 관리</a>
+                <a class="nav-link" href="/speaker-management/">스피커 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/azimuth-setting/">방위각 설정</a>
             </li>
         </ul>
 
@@ -761,13 +764,17 @@
             // 탭 링크에 이벤트 리스너 추가
             document.querySelectorAll('.nav-link').forEach(link => {
                 link.addEventListener('click', function(e) {
+                    e.preventDefault();
                     // 활성 링크는 무시
                     if (this.classList.contains('active')) {
                         return;
                     }
                     
+                    const href = this.getAttribute('href');
+                    console.log('탭 클릭: ' + href);
+                    
                     // 즉시 페이지 이동
-                    window.location.href = this.getAttribute('href');
+                    window.location.href = href;
                 });
             });
             

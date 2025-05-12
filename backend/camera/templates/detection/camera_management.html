@@ -127,19 +127,22 @@
     <div class="container">
         <ul class="nav nav-tabs">
             <li class="nav-item">
-                <a class="nav-link" href="/" target="_top">메인 대시보드</a>
+                <a class="nav-link" href="/">메인 대시보드</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link active" href="/camera-management/" target="_top">카메라 관리</a>
+                <a class="nav-link active" href="/camera-management/">카메라 관리</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="/db-management/" target="_top">데이터베이스 관리</a>
+                <a class="nav-link" href="/db-management/">데이터베이스 관리</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="/model-management/" target="_top">모델 관리</a>
+                <a class="nav-link" href="/model-management/">모델 관리</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="/speaker-management/" target="_top">스피커 관리</a>
+                <a class="nav-link" href="/speaker-management/">스피커 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/azimuth-setting/">방위각 설정</a>
             </li>
         </ul>
     </div>
@@ -350,6 +353,17 @@
     
     <script>
         $(document).ready(function() {
+            // 탭 네비게이션 개선 - 직접 페이지 이동 처리
+            $('.nav-tabs .nav-link').off('click').on('click', function(e) {
+                e.preventDefault();
+                const href = $(this).attr('href');
+                if (href && href !== '#' && href !== window.location.pathname) {
+                    console.log('탭 클릭: ' + href);
+                    window.location.href = href;
+                    return false;
+                }
+            });
+            
             // 기존 DOM 요소를 jQuery 방식으로 사용하도록 변경
             const $form = $('#addCameraForm');
             const $formTitle = $('#formTitle');

@@ -17,6 +17,10 @@ from .views.speaker_management import (
     speaker_management_view, get_controller_status, play_sound, stop_sound, 
     set_volume, send_tcp_command, connect_controller, disconnect_controller
 )
+# 방위각 설정 뷰 함수 가져오기
+from .views.azimuth_setting import (
+    azimuth_setting_view, add_azimuth, update_azimuth, delete_azimuth, get_azimuth
+)
 
 urlpatterns = [
     # 메인 뷰
@@ -94,4 +98,11 @@ urlpatterns = [
     # API - PTZ 카메라 제어
     path('api/ptz/control/', control_ptz, name='control_ptz'),
     path('api/ptz/position/<str:camera_id>/', get_ptz_position, name='get_ptz_position'),
+
+    # 방위각 설정 뷰 및 API
+    path('azimuth-setting/', azimuth_setting_view, name='azimuth_setting'),
+    path('api/azimuth/add/', add_azimuth, name='add_azimuth'),
+    path('api/azimuth/update/<int:azimuth_id>/', update_azimuth, name='update_azimuth'),
+    path('api/azimuth/delete/<int:azimuth_id>/', delete_azimuth, name='delete_azimuth'),
+    path('api/azimuth/get/<int:azimuth_id>/', get_azimuth, name='get_azimuth'),
 ]

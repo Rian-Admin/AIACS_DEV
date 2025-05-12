@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>방위각 설정 - 조류충돌방지시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* 일관된 테마 스타일 */
+        body {
+            background-color: #f8f9fa;
+            padding-top: 0;
+            margin: 0;
+        }
+        
+        .system-header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            margin-bottom: 0;
+        }
+        
+        .system-title {
+            font-weight: 600;
+            font-size: 1.4rem;
+            margin: 0;
+        }
+        
+        .system-subtitle {
+            font-weight: 300;
+            font-size: 0.9rem;
+            margin-top: 0.2rem;
+        }
+        
+        .nav-tabs {
+            background-color: #f8f9fa;
+            padding-top: 0.5rem;
+            border-bottom: 1px solid #dee2e6;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .nav-link {
+            color: #495057;
+            font-weight: 500;
+            padding: 0.7rem 1.5rem;
+            border-radius: 0.25rem 0.25rem 0 0;
+            transition: all 0.2s ease;
+        }
+        
+        .nav-link:hover {
+            background-color: rgba(13, 110, 253, 0.1);
+            color: #0d6efd;
+        }
+        
+        .nav-link.active {
+            font-weight: bold;
+            color: #0d6efd;
+            background-color: white;
+            border-color: #dee2e6 #dee2e6 #fff;
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
+        }
+        
+        .container-main {
+            padding-top: 2rem;
+        }
+        
+        /* 방위각 설정 페이지 특화 스타일 */
+        .azimuth-card {
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .azimuth-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+        
+        .btn-primary {
+            background-color: #0d6efd;
+        }
+        
+        .btn-danger {
+            background-color: #dc3545;
+        }
+        
+        .card-header {
+            background-color: #0d6efd;
+            color: white;
+        }
+        
+        #azimuthForm {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        
+        .compass-container {
+            width: 300px;
+            height: 300px;
+            margin: 0 auto;
+            position: relative;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><circle cx="100" cy="100" r="99" fill="white" stroke="%232c3e50" stroke-width="1"/><text x="96" y="25" font-family="Arial" font-size="12" text-anchor="middle">N</text><text x="175" y="104" font-family="Arial" font-size="12" text-anchor="middle">E</text><text x="96" y="185" font-family="Arial" font-size="12" text-anchor="middle">S</text><text x="25" y="104" font-family="Arial" font-size="12" text-anchor="middle">W</text></svg>');
+            background-repeat: no-repeat;
+            background-size: 100% 100%;
+        }
+        
+        .compass-needle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 4px;
+            height: 120px;
+            background-color: red;
+            transform-origin: bottom center;
+            transform: translate(-50%, -100%) rotate(0deg);
+            transition: transform 0.3s ease;
+            z-index: 2;
+        }
+        
+        .compass-needle::after {
+            content: "";
+            position: absolute;
+            bottom: -5px;
+            left: -8px;
+            width: 20px;
+            height: 20px;
+            background-color: #2c3e50;
+            border-radius: 50%;
+        }
+        
+        .degree-display {
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 일관된 헤더 -->
+    <header class="system-header">
+        <div class="container">
+            <h1 class="system-title">
+                <i class="fas fa-dove"></i> 조류충돌방지시스템
+            </h1>
+            <p class="system-subtitle">방위각 설정 페이지</p>
+        </div>
+    </header>
+    
+    <!-- 일관된 탭 내비게이션 -->
+    <div class="container">
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a class="nav-link" href="/" target="_top">메인 대시보드</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/camera-management/" target="_top">카메라 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/db-management/" target="_top">데이터베이스 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/model-management/" target="_top">모델 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/speaker-management/" target="_top">스피커 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link active" href="/azimuth-setting/" target="_top">방위각 설정</a>
+            </li>
+        </ul>
+    </div>
+
+    <div class="container container-main">
+        <h1 class="mb-4">방위각 설정</h1>
+        
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div id="azimuthForm">
+                    <h3 class="mb-3" id="formTitle">방위각 추가</h3>
+                    <form id="addAzimuthForm">
+                        <input type="hidden" id="editMode" value="false">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="target_id" class="form-label">대상 ID</label>
+                                        <input type="text" class="form-control" id="target_id" required>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="target_type" class="form-label">대상 유형</label>
+                                        <select class="form-select" id="target_type" required>
+                                            <option value="wind_turbine">풍력 터빈</option>
+                                            <option value="camera">카메라</option>
+                                            <option value="speaker">스피커</option>
+                                            <option value="other">기타</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="azimuth_degree" class="form-label">방위각 (도)</label>
+                                        <input type="number" class="form-control" id="azimuth_degree" min="0" max="359.99" step="0.01" required>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="adjustment_reason" class="form-label">조정 사유</label>
+                                        <select class="form-select" id="adjustment_reason">
+                                            <option value="initial_setup">초기 설정</option>
+                                            <option value="recalibration">재보정</option>
+                                            <option value="maintenance">유지보수</option>
+                                            <option value="optimization">최적화</option>
+                                            <option value="other">기타</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="notes" class="form-label">메모</label>
+                                    <textarea class="form-control" id="notes" rows="3"></textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="applied_date" class="form-label">적용 날짜</label>
+                                    <input type="date" class="form-control" id="applied_date" required>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <button type="submit" class="btn btn-primary" id="submitBtn">방위각 추가</button>
+                                    <button type="button" class="btn btn-secondary d-none" id="cancelBtn">취소</button>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="compass-container">
+                                    <div class="compass-needle" id="compassNeedle"></div>
+                                </div>
+                                <div class="degree-display" id="degreeDisplay">0°</div>
+                                <div class="mt-3">
+                                    <label for="azimuthSlider" class="form-label">방위각 조정</label>
+                                    <input type="range" class="form-range" id="azimuthSlider" min="0" max="359" value="0">
+                                </div>
+                                <div class="btn-group mt-3 d-flex">
+                                    <button type="button" class="btn btn-outline-primary" onclick="setAzimuth(0)">북(0°)</button>
+                                    <button type="button" class="btn btn-outline-primary" onclick="setAzimuth(90)">동(90°)</button>
+                                    <button type="button" class="btn btn-outline-primary" onclick="setAzimuth(180)">남(180°)</button>
+                                    <button type="button" class="btn btn-outline-primary" onclick="setAzimuth(270)">서(270°)</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="row" id="azimuthList">
+            <h3 class="mb-3">방위각 설정 목록</h3>
+            <!-- 방위각 카드가 여기에 생성됩니다 -->
+            {% if azimuths %}
+                {% for azimuth in azimuths %}
+                <div class="col-md-4 azimuth-card" data-id="{{ azimuth.id }}">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">{{ azimuth.target_id }}</h5>
+                            <span class="badge bg-info">{{ azimuth.target_type }}</span>
+                        </div>
+                        <div class="card-body">
+                            <p class="h3 text-center mb-3">{{ azimuth.azimuth_degree }}°</p>
+                            <div class="d-flex justify-content-center mb-3">
+                                <div style="width: 100px; height: 100px; position: relative; border-radius: 50%; border: 2px solid #ddd;">
+                                    <div style="position: absolute; top: 50%; left: 50%; width: 2px; height: 40px; background-color: red; transform-origin: bottom center; transform: translate(-50%, -100%) rotate({{ azimuth.azimuth_degree }}deg);"></div>
+                                </div>
+                            </div>
+                            <p><strong>조정 사유:</strong> {{ azimuth.adjustment_reason }}</p>
+                            <p><strong>적용 날짜:</strong> {{ azimuth.applied_date }}</p>
+                            {% if azimuth.notes %}<p><strong>메모:</strong> {{ azimuth.notes }}</p>{% endif %}
+                            <div class="d-flex justify-content-between mt-3">
+                                <button class="btn btn-sm btn-primary edit-btn" data-id="{{ azimuth.id }}">편집</button>
+                                <button class="btn btn-sm btn-danger delete-btn" data-id="{{ azimuth.id }}">삭제</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="col-12 text-center">
+                    <p>등록된 방위각 설정이 없습니다.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 삭제 확인 모달 -->
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">방위각 설정 삭제 확인</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>정말로 이 방위각 설정을 삭제하시겠습니까?</p>
+                    <p class="text-danger">이 작업은 되돌릴 수 없습니다.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="button" class="btn btn-danger" id="confirmDelete">삭제</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap과 jQuery 라이브러리 -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.min.js"></script>
+    
+    <script>
+        $(document).ready(function() {
+            // 현재 날짜를 기본값으로 설정
+            const today = new Date().toISOString().split('T')[0];
+            $('#applied_date').val(today);
+            
+            // 기존 DOM 요소를 jQuery 방식으로 사용하도록 변경
+            const $form = $('#addAzimuthForm');
+            const $formTitle = $('#formTitle');
+            const $submitBtn = $('#submitBtn');
+            const $cancelBtn = $('#cancelBtn');
+            const $editMode = $('#editMode');
+            const $targetIdInput = $('#target_id');
+            
+            // 현재 편집 중인 방위각 ID
+            let currentAzimuthId = null;
+            
+            // 방위각 추가 폼 제출
+            $form.on('submit', function(e) {
+                e.preventDefault();
+                
+                // 폼 데이터 수집
+                const formData = {
+                    target_id: $('#target_id').val(),
+                    target_type: $('#target_type').val(),
+                    azimuth_degree: parseFloat($('#azimuth_degree').val()),
+                    adjustment_reason: $('#adjustment_reason').val(),
+                    notes: $('#notes').val(),
+                    applied_date: $('#applied_date').val()
+                };
+                
+                // 편집 모드인지 확인
+                const isEditMode = $editMode.val() === 'true';
+                
+                if (isEditMode) {
+                    // 방위각 업데이트 API 호출
+                    $.ajax({
+                        url: `/api/azimuth/update/${currentAzimuthId}/`,
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(formData),
+                        success: function(response) {
+                            if (response.status === 'success') {
+                                // 성공 알림 표시
+                                showAlert('방위각 설정이 성공적으로 업데이트되었습니다. 페이지를 새로고침합니다...', 'success');
+                                
+                                // 1초 후 페이지 새로고침
+                                setTimeout(function() {
+                                    location.reload();
+                                }, 1000);
+                            } else {
+                                showAlert('방위각 업데이트 실패: ' + response.message, 'danger');
+                            }
+                        },
+                        error: function(xhr) {
+                            let errorMsg = '방위각 업데이트 중 오류가 발생했습니다';
+                            try {
+                                errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                            } catch(e) {}
+                            showAlert(errorMsg, 'danger');
+                        }
+                    });
+                } else {
+                    // 방위각 추가 API 호출
+                    $.ajax({
+                        url: '/api/azimuth/add/',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(formData),
+                        success: function(response) {
+                            if (response.status === 'success') {
+                                // 성공 알림 표시
+                                showAlert('방위각 설정이 성공적으로 추가되었습니다. 페이지를 새로고침합니다...', 'success');
+                                
+                                // 1초 후 페이지 새로고침
+                                setTimeout(function() {
+                                    location.reload();
+                                }, 1000);
+                            } else {
+                                showAlert('방위각 추가 실패: ' + response.message, 'danger');
+                            }
+                        },
+                        error: function(xhr) {
+                            let errorMsg = '방위각 추가 중 오류가 발생했습니다';
+                            try {
+                                errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                            } catch(e) {}
+                            showAlert(errorMsg, 'danger');
+                        }
+                    });
+                }
+            });
+            
+            // 편집 버튼 클릭 이벤트
+            $('.edit-btn').on('click', function() {
+                const azimuthId = $(this).data('id');
+                setEditMode(true, azimuthId);
+                
+                // 방위각 정보 가져오기 API 호출
+                $.ajax({
+                    url: `/api/azimuth/get/${azimuthId}/`,
+                    type: 'GET',
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            const azimuth = response.azimuth;
+                            
+                            // 폼에 방위각 정보 채우기
+                            $('#target_id').val(azimuth.target_id);
+                            $('#target_type').val(azimuth.target_type);
+                            $('#azimuth_degree').val(azimuth.azimuth_degree);
+                            $('#adjustment_reason').val(azimuth.adjustment_reason);
+                            $('#notes').val(azimuth.notes);
+                            $('#applied_date').val(azimuth.applied_date);
+                            
+                            // 방위각 슬라이더와 나침반 바늘 업데이트
+                            updateCompassNeedle(azimuth.azimuth_degree);
+                            $('#azimuthSlider').val(Math.round(azimuth.azimuth_degree));
+                            
+                            // 폼으로 스크롤
+                            $('html, body').animate({
+                                scrollTop: $form.offset().top - 100
+                            }, 500);
+                        } else {
+                            showAlert('방위각 정보를 가져오는데 실패했습니다: ' + response.message, 'danger');
+                        }
+                    },
+                    error: function(xhr) {
+                        let errorMsg = '방위각 정보를 가져오는 중 오류가 발생했습니다';
+                        try {
+                            errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                        } catch(e) {}
+                        showAlert(errorMsg, 'danger');
+                    }
+                });
+            });
+            
+            // 삭제 버튼 클릭 이벤트
+            $('.delete-btn').on('click', function() {
+                const azimuthId = $(this).data('id');
+                // 삭제할 방위각 ID를 삭제 버튼에 데이터로 저장
+                $('#confirmDelete').data('id', azimuthId);
+                $('#deleteModal').modal('show');
+            });
+            
+            // 삭제 확인 버튼 클릭 이벤트
+            $('#confirmDelete').on('click', function() {
+                const azimuthId = $(this).data('id');
+                
+                // 방위각 삭제 API 호출
+                $.ajax({
+                    url: `/api/azimuth/delete/${azimuthId}/`,
+                    type: 'POST',
+                    success: function(response) {
+                        $('#deleteModal').modal('hide');
+                        
+                        if (response.status === 'success') {
+                            // 성공 알림 표시
+                            showAlert('방위각 설정이 성공적으로 삭제되었습니다. 페이지를 새로고침합니다...', 'success');
+                            
+                            // 1초 후 페이지 새로고침
+                            setTimeout(function() {
+                                location.reload();
+                            }, 1000);
+                        } else {
+                            showAlert('방위각 삭제 실패: ' + response.message, 'danger');
+                        }
+                    },
+                    error: function(xhr) {
+                        $('#deleteModal').modal('hide');
+                        
+                        let errorMsg = '방위각 삭제 중 오류가 발생했습니다';
+                        try {
+                            errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                        } catch(e) {}
+                        showAlert(errorMsg, 'danger');
+                    }
+                });
+            });
+            
+            // 취소 버튼 클릭 이벤트
+            $cancelBtn.on('click', function() {
+                resetForm();
+            });
+            
+            // 편집 모드 설정 함수
+            function setEditMode(isEdit, azimuthId) {
+                $editMode.val(isEdit ? 'true' : 'false');
+                currentAzimuthId = azimuthId;
+                
+                if (isEdit) {
+                    $formTitle.text('방위각 편집');
+                    $submitBtn.text('변경사항 저장');
+                    $cancelBtn.removeClass('d-none');
+                } else {
+                    $formTitle.text('방위각 추가');
+                    $submitBtn.text('방위각 추가');
+                    $cancelBtn.addClass('d-none');
+                }
+            }
+            
+            // 폼 초기화 함수
+            function resetForm() {
+                $form[0].reset();
+                setEditMode(false, null);
+                currentAzimuthId = null;
+                
+                // 방위각 슬라이더와 나침반 바늘 초기화
+                updateCompassNeedle(0);
+                $('#azimuthSlider').val(0);
+                $('#azimuth_degree').val(0);
+                
+                // 현재 날짜를 다시 설정
+                $('#applied_date').val(today);
+            }
+            
+            // 방위각 슬라이더 이벤트
+            $('#azimuthSlider').on('input', function() {
+                const degree = parseInt($(this).val());
+                $('#azimuth_degree').val(degree);
+                updateCompassNeedle(degree);
+            });
+            
+            // 방위각 입력 필드 이벤트
+            $('#azimuth_degree').on('input', function() {
+                let degree = parseFloat($(this).val());
+                if (isNaN(degree)) {
+                    degree = 0;
+                } else if (degree < 0) {
+                    degree = 0;
+                } else if (degree > 359.99) {
+                    degree = 359.99;
+                }
+                
+                updateCompassNeedle(degree);
+                $('#azimuthSlider').val(Math.round(degree));
+            });
+            
+            // 나침반 바늘 업데이트 함수
+            function updateCompassNeedle(degree) {
+                $('#compassNeedle').css('transform', `translate(-50%, -100%) rotate(${degree}deg)`);
+                $('#degreeDisplay').text(`${degree}°`);
+            }
+            
+            // 알림 표시 함수
+            function showAlert(message, type, duration) {
+                // 기존 알림 제거
+                $('.alert-notification').remove();
+                
+                // 새 알림 생성
+                const alertDiv = $('<div class="alert alert-' + type + ' alert-dismissible fade show alert-notification" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999;">' +
+                                 message +
+                                 '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                                 '</div>');
+                
+                // 알림 표시
+                $('body').append(alertDiv);
+                
+                // 지정된 시간 후 자동 제거 (지정하지 않으면 5초)
+                duration = duration || 5000;
+                setTimeout(function() {
+                    alertDiv.alert('close');
+                }, duration);
+            }
+            
+            // 페이지 로드 시 방위각 슬라이더 초기값 설정
+            updateCompassNeedle(0);
+        });
+        
+        // 방위각 빠른 설정 버튼
+        function setAzimuth(degree) {
+            $('#azimuth_degree').val(degree);
+            $('#azimuthSlider').val(degree);
+            updateCompassNeedle(degree);
+        }
+        
+        // 나침반 바늘 업데이트 (전역 함수)
+        function updateCompassNeedle(degree) {
+            $('#compassNeedle').css('transform', `translate(-50%, -100%) rotate(${degree}deg)`);
+            $('#degreeDisplay').text(`${degree}°`);
+        }
+    </script>
+</body>
+</html> 

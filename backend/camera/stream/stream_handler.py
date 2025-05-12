@@ -17,14 +17,6 @@ class StreamHandler:
         # 버퍼 크기 축소
         self.frame_buffer = deque(maxlen=2)  # 최대 2개 프레임만 유지 (지연 더 감소)
         
-        # 감지 결과 버퍼 추가
-        self.detection_buffer = deque(maxlen=5)  # 최근 5개 감지 결과 저장
-        
-        # 객체 감지 FPS 계산용 변수
-        self.detection_fps = 0
-        self.detection_count = 0
-        self.detection_start_time = time.time()
-        
         # 연결 재시도 설정 - 강화된 재연결 시스템
         self.max_retries = 20  # 재시도 횟수 증가
         self.current_retry = 0
@@ -40,11 +32,6 @@ class StreamHandler:
         self.video_fps = 10  # 비디오 파일의 기본 FPS
         self.last_frame_time = 0  # 마지막 프레임 시간
         
-        # 프레임 안정성 관련 변수 추가 - 비활성화
-        self.awaiting_iframe = False  # I-프레임 기다림 로직 비활성화
-        self.valid_frame_count = 0
-        self.frame_health = 100  # 처음부터 건강한 상태 가정
-        
         # RTSP 스트림인 경우 저지연 모드를 위한 환경 변수 설정
         if self.is_rtsp:
             # 간결한 RTSP 설정으로 변경
@@ -53,14 +40,7 @@ class StreamHandler:
             if '?' in url:
                 print(f"카메라 {camera_number}: 쿼리 파라미터 포함된 RTSP URL 사용 - {url}")
         
-        # 객체 감지기 가져오기
-        self.detector = ObjectDetector.get_instance()
-        
-        # 객체 감지 스케줄링 관련 변수
-        self.last_detection_time = 0
-        self.detection_interval = 0.1  # 감지 간격 (초 단위) - 더 자주 감지하도록 조정됨
-        
-        # 마지막 감지 결과
+        # 마지막 감지 결과 (동기식 모드로 전환하더라도 호환성을 위해 유지)
         self.last_detection_result = None
         
         # 초기화 즉시 스트림 시작
@@ -298,28 +278,7 @@ class StreamHandler:
             # 버퍼에 프레임 추가 (순환 버퍼이므로 자동으로 오래된 것 제거)
             self.frame_buffer.append(frame.copy())  # 깊은 복사로 프레임 보존
             
-            # 객체 감지 요청 (일정 간격으로만)
-            if current_time - self.last_detection_time >= self.detection_interval:
-                # 우선순위 설정 (카메라 번호 기반)
-                priority = min(10, max(1, int(self.camera_number)))  # 1-10 사이의 우선순위
-                
-                # 비동기 감지 요청
-                self.detector.detect_objects_async(
-                    self.camera_number, 
-                    frame.copy(),  # 깊은 복사로 안전한 참조 전달
-                    priority=priority
-                )
-                self.last_detection_time = current_time
-                
-                # 감지 카운터 증가
-                self.detection_count += 1
-                detection_elapsed = current_time - self.detection_start_time
-                if detection_elapsed >= 1.0:
-                    self.detection_fps = self.detection_count / detection_elapsed
-                    self.detection_count = 0
-                    self.detection_start_time = current_time
-            
-            # 매우 짧은 대기 (CPU 사용량 제한)
+            # 짧은 대기 (CPU 사용량 제한)
             time.sleep(0.001)
     
     def _add_empty_frame_to_buffer(self, message):
@@ -344,21 +303,15 @@ class StreamHandler:
         self.frame_buffer.append(empty_frame)
     
     def get_frame_with_detections(self):
-        """감지 결과가 적용된 최신 프레임 가져오기"""
+        """이전 버전과의 호환성을 위해 유지됨 - 단순히 프레임만 반환"""
         try:
             # 최신 프레임 가져오기
             frame = self.get_frame_from_buffer()
             if frame is None:
                 return None, None
             
-            # 최신 감지 결과 가져오기 (비동기 처리 결과)
-            result = self.detector.get_latest_result(self.camera_number)
-            
-            # 결과 저장 (UI 외부에서 사용할 수 있도록)
-            if result is not None:
-                self.last_detection_result = result
-            
-            return frame, result
+            # 비동기 감지 없이 프레임만 반환
+            return frame, None
         
         except Exception as e:
             import traceback
@@ -372,8 +325,8 @@ class StreamHandler:
             if not self.frame_buffer:
                 return None
                 
-            # 가장 최근 프레임 반환 (복사 없이)
-            return self.frame_buffer[-1]
+            # 가장 최근 프레임 반환 (깊은 복사로 반환)
+            return self.frame_buffer[-1].copy()
             
         except Exception as e:
             return None

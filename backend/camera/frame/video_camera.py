@@ -128,7 +128,7 @@ class VideoCamera:
                 time.sleep(1)  # 오류 발생 시 1초 대기
     
     def get_frame(self, higher_quality=False):
-        """프레임 가져오기 - 최적화된 버전"""
+        """프레임 가져오기 - 동기식 객체 감지로 최적화된 버전"""
         try:
             # URL 변경 여부 확인 및 필요시 스트림 핸들러 재초기화
             current_url = self.camera_manager.get_camera_url(self.camera_number)
@@ -155,37 +155,47 @@ class VideoCamera:
             # 프로세스 시작 시간
             start_time = time.time()
             
-            # 현재 시간 기준으로 캐시된 프레임을 재사용할지 결정
-            current_time = time.time()
-            use_cached_frame = (current_time - self._last_frame_time < self._frame_cache_time) and self._last_valid_frame is not None
+            # 프레임 가져오기 (raw 프레임, 비동기 감지 결과는 무시)
+            frame = self.stream_handler.get_frame_from_buffer()
             
-            # 너무 자주 호출되는 경우 캐시된 프레임 반환
-            if use_cached_frame and not higher_quality:
-                # 캐시된 프레임 사용 (복사본 사용하여 변경 방지)
-                frame = self._last_valid_frame.copy()
-            else:
-                # 프레임 및 감지 결과 가져오기
-                frame, latest_result = self.stream_handler.get_frame_with_detections()
+            if frame is None:
+                return self._create_empty_frame(f"카메라 {self.camera_number}: 프레임 없음")
+            
+            # 마지막 유효 프레임 저장
+            self._last_valid_frame = frame.copy()
+            self._last_frame_time = time.time()
+            
+            # 동기식으로 객체 감지 수행 (현재 프레임에 대해 직접 감지)
+            if self.detector and self.detector.model is not None:
+                result = self.detector.detect_objects(frame.copy())
                 
-                if frame is None:
-                    return self._create_empty_frame(f"카메라 {self.camera_number}: 프레임 없음")
-                
-                # 마지막 유효 프레임 저장 (디버깅을 위해)
-                self._last_valid_frame = frame.copy()
-                self._last_frame_time = current_time
-                
-                # 바운딩 박스 그리기 - 비동기 감지 결과 사용
-                if latest_result and hasattr(latest_result, 'boxes') and hasattr(latest_result.boxes, '__len__') and len(latest_result.boxes) > 0:
+                # 감지 결과가 있으면 바운딩 박스 그리기
+                if result and hasattr(result, 'boxes') and hasattr(result.boxes, '__len__') and len(result.boxes) > 0:
                     try:
-                        frame = draw_detections(frame, latest_result, self.detector.model.names)
+                        frame = draw_detections(frame, result, self.detector.model.names)
+                        
+                        # 감지 결과 저장 (DB 업데이트용)
+                        self._last_results = result
+                        
+                        # DB 업데이트는 비동기로 처리 (스레드가 처리할 수 있도록)
+                        with self._processing_lock:
+                            current_time = time.time()
+                            if current_time - self._last_db_update >= self._db_update_interval:
+                                if hasattr(result, 'boxes') and hasattr(result, 'orig_shape'):
+                                    # 프레임 크기 저장
+                                    height, width = result.orig_shape
+                                    # DB 업데이트를 위한 플래그 설정 (스레드가 처리할 수 있도록)
+                                    self._last_processed_result = result
+                        
                     except Exception as e:
                         logger.error(f"바운딩 박스 그리기 오류: {e}")
             
-            # 감지 FPS 표시 (추가)
-            if hasattr(self.stream_handler, 'detection_fps'):
+            # 감지 FPS 표시
+            if hasattr(self.detector, 'get_average_fps'):
+                detection_fps = self.detector.get_average_fps()
                 cv2.putText(
                     frame, 
-                    f"Det FPS: {self.stream_handler.detection_fps:.1f}", 
+                    f"Det FPS: {detection_fps:.1f}", 
                     (10, 30),
                     cv2.FONT_HERSHEY_COMPLEX, 
                     0.4, 
