@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Box, Typography, Paper, TextField, Button, IconButton, InputAdornment, Alert } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { translate } from '../../utils/i18n';
-import rianLogo from '../../assets/images/rian_40px.png';
+import rianLogo from '../../assets/images/rian_logo.png';
 
 const Login = ({ handleLogin, language }) => {
   const [username, setUsername] = useState('');
@@ -52,7 +52,7 @@ const Login = ({ handleLogin, language }) => {
           src={rianLogo}
           alt="RIAN 로고"
           sx={{ 
-            height: 20, 
+            height: 30, 
             position: 'absolute',
             top: 15,
             left: 15

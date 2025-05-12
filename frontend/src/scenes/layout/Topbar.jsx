@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, IconButton, Typography, Button, Menu, MenuItem, Badge, Tooltip } from '@mui/material';
 import { translate } from '../../utils/i18n';
-import rianLogo from '../../assets/images/rian_60px.png';
+import rianLogo from '../../assets/images/rian_logo.png';
 
 // 아이콘
 import {
@@ -97,7 +97,7 @@ const Topbar = ({
         >
           <MenuIcon />
         </IconButton>
-        <img src={rianLogo} alt="RIAN Logo" style={{ height: '36px', marginRight: '12px' }} />
+        <img src={rianLogo} alt="RIAN Logo" style={{ height: '30px', marginRight: '12px' }} />
         <Typography variant="h5" fontWeight="bold" color="white">
           {pageTitle}
         </Typography>

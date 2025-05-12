@@ -147,7 +147,7 @@ const CollisionAlert = ({ collisionRisks, language }) => {
                 fontSize: '0.8rem'
               }}
             >
-              {translate('현재 충돌 위험 없음', 'No collision risks detected', language)}
+              {translate('데이터가 없습니다', 'No data available', language)}
             </Typography>
           </Box>
         )}

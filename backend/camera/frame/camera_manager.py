@@ -63,12 +63,6 @@ class CameraManager:
         self._monitor_thread = threading.Thread(target=self._monitor_cameras, daemon=True)
         self._monitor_thread.start()
         logger.info("카메라 모니터링 스레드가 시작되었습니다.")
-        
-        # DB 저장 자동화를 위한 백그라운드 스레드 시작
-        self._db_thread_stop = threading.Event()
-        self._db_thread = threading.Thread(target=self._auto_db_save_thread, daemon=True)
-        self._db_thread.start()
-        logger.info("DB 자동 저장 스레드가 시작되었습니다.")
     
     def _initialize_all_cameras(self):
         """시스템 시작 시 모든 카메라를 강제로 초기화합니다."""
@@ -404,51 +398,6 @@ class CameraManager:
             logger.error(f"카메라 {camera_number} 초기화 중 오류: {e}")
             return None
 
-    def _auto_db_save_thread(self):
-        """모든 카메라에 대해 주기적으로 프레임을 캡처하고 DB에 저장하는 스레드"""
-        from ..frame.video_camera import VideoCamera
-        import time
-        
-        # 카메라 객체 캐시
-        camera_cache = {}
-        
-        # DB 저장 간격 (5초)
-        save_interval = 5
-        
-        logger.info("자동 DB 저장 스레드 시작됨")
-        
-        while not self._db_thread_stop.is_set():
-            try:
-                # 모든 활성 카메라에 대해 처리
-                for camera_id in list(self._url_cache.keys()):
-                    try:
-                        # 카메라 객체 가져오기 (캐시에 없으면 생성)
-                        if camera_id not in camera_cache:
-                            camera_cache[camera_id] = VideoCamera(camera_id)
-                        
-                        camera = camera_cache[camera_id]
-                        
-                        # 카메라가 online 상태인지 확인
-                        if self.get_camera_status(camera_id) == "online":
-                            # 프레임 및 감지 결과 가져오기
-                            _, detection_result = camera.stream_handler.get_frame_with_detections()
-                            
-                            # DB에 저장
-                            if detection_result and hasattr(detection_result, 'boxes') and hasattr(detection_result, 'orig_shape'):
-                                height, width = detection_result.orig_shape
-                                camera._process_detection_results(detection_result.boxes, width, height)
-                                logger.info(f"카메라 {camera_id} 자동 DB 저장 완료")
-                    
-                    except Exception as e:
-                        logger.error(f"카메라 {camera_id} 자동 DB 저장 중 오류: {e}")
-                
-                # 일정 시간 대기
-                time.sleep(save_interval)
-                
-            except Exception as e:
-                logger.error(f"자동 DB 저장 스레드 오류: {e}")
-                time.sleep(1)
-
     def __del__(self):
         """객체 소멸 시 자원 정리"""
         try:
@@ -457,13 +406,6 @@ class CameraManager:
                 
             if hasattr(self, '_monitor_thread') and self._monitor_thread.is_alive():
                 self._monitor_thread.join(timeout=2.0)
-            
-            # DB 스레드 정리
-            if hasattr(self, '_db_thread_stop'):
-                self._db_thread_stop.set()
-                
-            if hasattr(self, '_db_thread') and self._db_thread.is_alive():
-                self._db_thread.join(timeout=2.0)
                 
             logger.info("카메라 매니저 자원 정리 완료")
         except Exception as e:

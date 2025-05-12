@@ -526,15 +526,10 @@ const Dashboard = ({ language }) => {
         }
       } catch (error) {
         console.error('충돌 위험 데이터 불러오기 오류:', error);
-        // 오류 발생 시 기본 데이터 유지
-        const risks = [
-          { id: 1, level: 'low', location: 'SG-01', distance: 750, species: '까마귀', speed: 15, timestamp: new Date() },
-          { id: 2, level: 'low', location: 'SG-02', distance: 820, species: '독수리', speed: 12, timestamp: new Date() }
-        ];
-        
-        setCollisionRisks(risks);
+        // 오류 발생 시 빈 배열로 설정 (더미 데이터 제거)
+        setCollisionRisks([]);
         setHighestRiskLevel('low');
-        console.log('오류로 인해 기본 충돌 위험 데이터 사용');
+        console.log('오류로 인해 충돌 위험 데이터 없음');
       }
     };
     
@@ -770,25 +765,18 @@ const Dashboard = ({ language }) => {
         setDailySpeciesLoading(false);
       } catch (error) {
         console.error('종별/방위별 데이터 로드 오류:', error);
-        // 오류 시 기본값 설정
-        setDailySpeciesStats([
-          { name: '까마귀', count: 120, color: '#4caf50' },
-          { name: '독수리', count: 85, color: '#ff9800' },
-          { name: '청동오리', count: 60, color: '#2196f3' },
-          { name: '갈매기', count: 45, color: '#f44336' },
-          { name: '참새', count: 30, color: '#9c27b0' },
-          { name: '해오라기', count: 20, color: '#607d8b' }
-        ]);
+        // 오류 시 빈 배열로 설정 (더미 데이터 제거)
+        setDailySpeciesStats([]);
         
         setDirectionStats([
-          { direction: 'N', value: 0.15 },
-          { direction: 'NE', value: 0.18 },
-          { direction: 'E', value: 0.12 },
-          { direction: 'SE', value: 0.10 },
-          { direction: 'S', value: 0.08 },
-          { direction: 'SW', value: 0.10 },
-          { direction: 'W', value: 0.12 },
-          { direction: 'NW', value: 0.15 }
+          { direction: 'N', value: 0 },
+          { direction: 'NE', value: 0 },
+          { direction: 'E', value: 0 },
+          { direction: 'SE', value: 0 },
+          { direction: 'S', value: 0 },
+          { direction: 'SW', value: 0 },
+          { direction: 'W', value: 0 },
+          { direction: 'NW', value: 0 }
         ]);
         setDailySpeciesLoading(false);
       }

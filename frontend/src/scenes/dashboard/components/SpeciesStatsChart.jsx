@@ -7,6 +7,48 @@ import { Box, Typography, Tooltip } from '@mui/material';
  * @param {Array} props.data - 데이터 배열 [{name, count, color}]
  */
 const SpeciesStatsChart = ({ data }) => {
+  // 데이터가 없거나 빈 배열인 경우 체크
+  if (!data || data.length === 0 || data.every(item => item.count === 0)) {
+    return (
+      <Box sx={{ 
+        width: '100%',
+        height: '100%', 
+        backgroundColor: '#050A18',
+        borderRadius: 2,
+        p: 1,
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        <Typography variant="subtitle2" sx={{ 
+          color: 'white', 
+          mb: 1, 
+          fontWeight: 'bold',
+          textShadow: '0 0 5px rgba(255,255,255,0.5)'
+        }}>
+          조류 종별 일일 누적 현황
+        </Typography>
+        
+        <Box sx={{ 
+          flex: 1, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center' 
+        }}>
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              color: 'rgba(169,234,255,0.7)',
+              textShadow: '0 0 3px rgba(169,234,255,0.4)',
+              fontSize: '0.8rem'
+            }}
+          >
+            데이터가 없습니다
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
+
   // 데이터 정렬 (큰 값 -> 작은 값)
   const sortedData = [...data].sort((a, b) => b.count - a.count);
   

@@ -88,8 +88,8 @@ urlpatterns = [
     path('api/yolo/delete-model/', delete_model, name='delete_model'),
     
     # API - 조류퇴치기 제어
-    path('api/controller/enable/', enable_controller, name='enable_controller'),
-    path('api/controller/disable/', disable_controller, name='disable_controller'),
+    path('api/controller/enable', enable_controller, name='enable_controller'),
+    path('api/controller/disable', disable_controller, name='disable_controller'),
     
     # API - PTZ 카메라 제어
     path('api/ptz/control/', control_ptz, name='control_ptz'),

@@ -115,7 +115,7 @@ const BirdProximityStatus = ({ birdActivityData, language }) => {
                 fontSize: '0.75rem'
               }}
             >
-              {translate('현재 감지된 조류 없음', 'No birds detected', language)}
+              {translate('데이터가 없습니다', 'No data available', language)}
             </Typography>
           </Box>
         ) : (

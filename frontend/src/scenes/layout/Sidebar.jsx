@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Box, Drawer, IconButton, Typography, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Tooltip } from '@mui/material';
 import { ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon } from '@mui/icons-material';
 import { translate } from '../../utils/i18n';
-import rianLogo from '../../assets/images/rian_60px.png';
+import rianLogo from '../../assets/images/rian_logo.png';
 import useAppStore from '../../store/useAppStore';
 
 // 임포트할 아이콘들

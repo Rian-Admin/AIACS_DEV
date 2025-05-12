@@ -250,9 +250,9 @@ const RadarCircleOverlay = React.memo(({ center }) => {
       };
       
       // 섹터 1, 2, 3 모두 표시 - 각 섹터의 정확한 중심에 배치
-      addSectorLabel(60, 'SECTOR 1', '#00e0e0');    // 시안(청록색) - 1번 섹터 (0~120도 사이)
-      addSectorLabel(180, 'SECTOR 2', '#70d070');   // 차트리우스(밝은 녹색) - 2번 섹터 (120~240도 사이)
-      addSectorLabel(300, 'SECTOR 3', '#e070e0');   // 마젠타(분홍색) - 3번 섹터 (240~360도 사이)
+      addSectorLabel(60, 'CAMERA 1', '#00e0e0');    // 시안(청록색) - 1번 섹터 (0~120도 사이)
+      addSectorLabel(180, 'CAMERA 2', '#70d070');   // 차트리우스(밝은 녹색) - 2번 섹터 (120~240도 사이)
+      addSectorLabel(300, 'CAMERA 3', '#e070e0');   // 마젠타(분홍색) - 3번 섹터 (240~360도 사이)
 
       return () => {
         // 컴포넌트 언마운트 시 오버레이 제거
@@ -434,27 +434,13 @@ const MapView = ({
       } else {
         // 빈 데이터인 경우 또는 데이터 구조가 예상과 다른 경우
         console.error('로그 데이터 형식 오류 또는 빈 데이터', response?.data);
-        // 오류 화면이나 빈 데이터 처리 로직 추가
-        setBirdLogs([{
-          id: 'error-1',
-          timestamp: new Date().toISOString(),
-          species: '데이터 형식 오류',
-          count: 0,
-          camera: 1,
-          riskLevel: 'low'
-        }]);
+        // 오류 시 빈 배열 반환
+        setBirdLogs([]);
       }
     } catch (error) {
       console.error('로그 데이터 가져오기 오류:', error);
-      // UI에 에러 상태 표시
-      setBirdLogs([{
-        id: 'error-2',
-        timestamp: new Date().toISOString(),
-        species: '서버 연결 오류',
-        count: 0,
-        camera: 1,
-        riskLevel: 'low'
-      }]);
+      // 오류 시 빈 배열 반환
+      setBirdLogs([]);
     } finally {
       setIsLoading(false);
     }
@@ -569,9 +555,9 @@ const MapView = ({
 
   // ------ 카메라 관련 상태 ------
   const [cameras, setCameras] = useState([
-    { id: '1', position: [35.192962, 126.221627], direction: 60, angle: 120, color: '#00e0e0', sector: 'SECTOR 1' },
-    { id: '2', position: [35.192962, 126.221627], direction: 180, angle: 120, color: '#70d070', sector: 'SECTOR 2' },
-    { id: '3', position: [35.192962, 126.221627], direction: 300, angle: 120, color: '#e070e0', sector: 'SECTOR 3' }
+    { id: '1', position: [35.192962, 126.221627], direction: 60, angle: 120, color: '#00e0e0', sector: 'CAMERA 1' },
+    { id: '2', position: [35.192962, 126.221627], direction: 180, angle: 120, color: '#70d070', sector: 'CAMERA 2' },
+    { id: '3', position: [35.192962, 126.221627], direction: 300, angle: 120, color: '#e070e0', sector: 'CAMERA 3' }
   ]);
   
   // 카메라 위치들의 중심점 계산
@@ -1272,7 +1258,7 @@ const MapView = ({
                       letterSpacing: '1px',
                       textTransform: 'uppercase'
                     }}>
-                      ALERT LOG
+                      {translate('알림 로그', 'Alert Log', language)}
                     </Typography>
                     <Box sx={{ flexGrow: 1 }} />
                     <Tooltip title={translate('새로고침', 'Refresh', language)}>
@@ -1406,7 +1392,7 @@ const MapView = ({
                                     fontSize: '0.7rem'
                                   }}
                                 >
-                                  {translate('마리 수', 'Count', language)}: {log.count}
+                                  {translate('개수', 'Count', language)}: {log.count}
                                 </Typography>
                               </Box>
                             </Box>
@@ -1501,7 +1487,7 @@ const MapView = ({
                                     fontSize: '0.7rem'
                                   }}
                                 >
-                                  {translate('마리 수', 'Count', language)}: {log.count}
+                                  {translate('개수', 'Count', language)}: {log.count}
                                 </Typography>
                               </Box>
                             </Box>
@@ -1511,7 +1497,7 @@ const MapView = ({
                     ) : (
                       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', backgroundColor: '#041530' }}>
                         <Typography variant="body2" sx={{ color: '#00c5ff', textAlign: 'center' }}>
-                          {translate('로그 데이터가 없습니다', 'No log data available', language)}
+                          {translate('데이터가 없습니다', 'No data available', language)}
                         </Typography>
                       </Box>
                     )}

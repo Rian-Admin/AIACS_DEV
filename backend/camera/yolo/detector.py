@@ -60,8 +60,6 @@ class ObjectDetector:
             try:
                 # 먼저 커스텀 모델 로드 시도
                 self.model = YOLO(self.model_path)
-                # 모델 속성 설정 - 에러 방지를 위해 융합(fuse) 비활성화
-                self.model.fuse = False  # 모델 융합 비활성화
             except Exception as custom_model_error:
                 print(f"커스텀 모델 로드 실패: {custom_model_error}")
                 pass
@@ -174,7 +172,7 @@ class ObjectDetector:
                 time.sleep(0.1)
     
     def _detect_objects_internal(self, frame):
-        """내부적으로 사용되는 객체 감지 메서드 - 기본 설정 사용"""
+        """내부적으로 사용되는 객체 감지 메서드"""
         if frame is None or self.model is None:
             return None
             
@@ -185,7 +183,7 @@ class ObjectDetector:
             # 시작 시간 기록
             start_time = time.time()
             
-            # YOLO 모델 실행 - 기본 설정만 사용
+            # YOLO 모델 실행 - conf 임계값 적용
             results = self.model(frame, conf=self.conf_threshold, verbose=False)
             
             # 추론 시간 기록
