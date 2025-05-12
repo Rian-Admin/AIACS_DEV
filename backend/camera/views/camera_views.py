@@ -144,6 +144,29 @@ def index(request):
         'cameras': sorted(available_cameras.keys())
     })
 
+def ptz_controller(request):
+    """PTZ 조류 추적 컨트롤러 페이지"""
+    # 시스템 시작 시 모든 카메라 초기화 (처음 호출될 때만)
+    if not _camera_init_done:
+        initialize_all_cameras()
+    
+    # DB에서 모든 카메라 가져오기
+    db_cameras = Camera.objects.all()
+    
+    # 카메라 목록 준비
+    cameras = []
+    for camera in db_cameras:
+        cameras.append({
+            'camera_id': camera.camera_id,
+            'installation_direction': camera.installation_direction,
+            'rtsp_address': camera.rtsp_address,
+            'status': camera.status
+        })
+    
+    return render(request, 'detection/ptz_controller.html', {
+        'cameras': cameras
+    })
+
 def camera_feed(request, camera_id):
     """카메라 스트림 - 성능 최적화"""
     # 싱글 프레임 요청 확인 (갱신 요청)

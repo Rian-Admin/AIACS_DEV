@@ -1,0 +1,1065 @@
+{% extends "detection/base_layout.html" %}
+
+{% block title %}PTZ 컨트롤러 - 조류충돌방지시스템{% endblock %}
+
+{% block subtitle %}PTZ 조류 추적 컨트롤러{% endblock %}
+
+{% block styles %}
+<style>
+    .camera-card {
+        margin-bottom: 1.5rem;
+        transition: all 0.3s ease;
+    }
+    
+    .camera-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+    
+    .card-header {
+        background-color: #0d6efd;
+        color: white;
+    }
+    
+    .ptz-controls {
+        margin-top: 20px;
+        text-align: center;
+    }
+    
+    .ptz-btn {
+        width: 60px;
+        height: 60px;
+        margin: 6px;
+        border-radius: 50%;
+        font-size: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .ptz-center-btn {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+    }
+    
+    .preset-btn {
+        margin: 5px;
+        position: relative;
+        display: inline-block;
+    }
+    
+    .preset-btn .delete-btn {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        width: 18px;
+        height: 18px;
+        padding: 0;
+        font-size: 10px;
+        border-radius: 50%;
+        background-color: #dc3545;
+        color: #fff;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+    
+    .preset-btn:hover .delete-btn {
+        opacity: 1;
+    }
+    
+    .preset-panel {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .tracking-panel {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .camera-feed {
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        overflow: hidden;
+        margin-bottom: 20px;
+        background-color: #000;
+        height: 300px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+    }
+    
+    .camera-feed img {
+        max-width: 100%;
+        max-height: 100%;
+    }
+    
+    .status-active {
+        color: #198754;
+        font-weight: bold;
+    }
+    
+    .status-inactive {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    
+    .position-info {
+        background-color: #e9ecef;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+    }
+    
+    .scan-settings {
+        margin-top: 15px;
+    }
+    
+    .preset-list-container {
+        max-height: 150px;
+        overflow-y: auto;
+        margin-top: 10px;
+    }
+    
+    #presetList {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+    
+    .home-position-panel {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 20px;
+        margin-top: 20px;
+    }
+    
+    .control-group {
+        display: flex;
+        justify-content: center;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container container-main">
+    <h1 class="mb-4">PTZ 조류 추적 컨트롤러</h1>
+    
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> 이 페이지에서는 PTZ 카메라를 제어하고 조류 추적 기능을 활성화할 수 있습니다.
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-8">
+            <!-- 카메라 선택 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">카메라 선택</h5>
+                </div>
+                <div class="card-body">
+                    <select class="form-select" id="cameraSelect">
+                        <option value="">카메라를 선택하세요</option>
+                        {% if cameras %}
+                            {% for camera in cameras %}
+                                <option value="{{ camera.camera_id }}" data-rtsp="{{ camera.rtsp_address }}">
+                                    {{ camera.camera_id }} ({{ camera.installation_direction }})
+                                </option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+            </div>
+            
+            <!-- 카메라 피드 -->
+            <div class="camera-feed" id="cameraFeed">
+                <p>카메라를 선택하면 여기에 영상이 표시됩니다</p>
+            </div>
+            
+            <!-- 기본 PTZ 컨트롤 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">기본 PTZ 컨트롤</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-7">
+                            <div class="ptz-controls">
+                                <div class="control-group">
+                                    <button class="btn btn-outline-primary ptz-btn" data-direction="UP">
+                                        <i class="fas fa-chevron-up"></i>
+                                    </button>
+                                </div>
+                                <div class="control-group">
+                                    <button class="btn btn-outline-primary ptz-btn" data-direction="LEFT">
+                                        <i class="fas fa-chevron-left"></i>
+                                    </button>
+                                    <button class="btn btn-outline-secondary ptz-btn ptz-center-btn" data-direction="HOME">
+                                        <i class="fas fa-home"></i>
+                                    </button>
+                                    <button class="btn btn-outline-primary ptz-btn" data-direction="RIGHT">
+                                        <i class="fas fa-chevron-right"></i>
+                                    </button>
+                                </div>
+                                <div class="control-group">
+                                    <button class="btn btn-outline-primary ptz-btn" data-direction="DOWN">
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <div class="zoom-controls">
+                                <div class="mb-3">
+                                    <button class="btn btn-outline-primary ptz-btn w-100" data-direction="ZOOM_IN">
+                                        <i class="fas fa-search-plus"></i>
+                                    </button>
+                                </div>
+                                <div class="mb-3">
+                                    <button class="btn btn-outline-primary ptz-btn w-100" data-direction="ZOOM_OUT">
+                                        <i class="fas fa-search-minus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="speed-control mt-3">
+                                <label for="speedControl" class="form-label">이동 속도</label>
+                                <input type="range" class="form-range" id="speedControl" min="0.1" max="1" step="0.1" value="0.7">
+                                <div class="d-flex justify-content-between">
+                                    <small>느리게</small>
+                                    <small>빠르게</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 홈 위치 설정 패널 -->
+                    <div class="home-position-panel">
+                        <h6 class="mb-3">홈 위치 설정 <small class="text-muted">(중앙 버튼 클릭시 이동할 위치)</small></h6>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-floating mb-3">
+                                    <input type="number" class="form-control" id="homePanValue" placeholder="0.0" value="0.0" step="0.1">
+                                    <label for="homePanValue">Pan 값</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating mb-3">
+                                    <input type="number" class="form-control" id="homeTiltValue" placeholder="0.0" value="0.0" step="0.1">
+                                    <label for="homeTiltValue">Tilt 값</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating mb-3">
+                                    <input type="number" class="form-control" id="homeZoomValue" placeholder="0.0" value="0.0" step="0.1">
+                                    <label for="homeZoomValue">Zoom 값</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <button id="setCurrentAsHomeBtn" class="btn btn-outline-primary">
+                                <i class="fas fa-map-marker-alt"></i> 현재 위치를 홈으로 설정
+                            </button>
+                            <button id="resetHomeBtn" class="btn btn-outline-secondary">
+                                <i class="fas fa-undo"></i> 기본값으로 재설정
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <!-- 위치 정보 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">위치 정보</h5>
+                </div>
+                <div class="card-body">
+                    <div class="position-info">
+                        <div>
+                            <strong>팬(Pan):</strong> <span id="panValue">-</span>
+                        </div>
+                        <div>
+                            <strong>틸트(Tilt):</strong> <span id="tiltValue">-</span>
+                        </div>
+                        <div>
+                            <strong>줌(Zoom):</strong> <span id="zoomValue">-</span>
+                        </div>
+                    </div>
+                    <button id="getPositionBtn" class="btn btn-primary w-100">
+                        <i class="fas fa-sync-alt"></i> 현재 위치 가져오기
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 프리셋 관리 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">프리셋 관리</h5>
+                </div>
+                <div class="card-body">
+                    <div class="preset-panel">
+                        <div class="input-group mb-3">
+                            <input type="text" class="form-control" id="presetName" placeholder="프리셋 이름">
+                            <button class="btn btn-primary" id="savePresetBtn">
+                                <i class="fas fa-save"></i> 저장
+                            </button>
+                        </div>
+                        
+                        <!-- 프리셋 이름 참고 사항 -->
+                        <div class="alert alert-warning mb-3" role="alert">
+                            <small><i class="fas fa-exclamation-triangle"></i> 중요: 프리셋 이름은 숫자만으로 지정하지 마세요. 영문자나 한글을 포함해야 합니다 (예: "위치1", "Position1")</small>
+                        </div>
+                        
+                        <div class="preset-list-container">
+                            <div id="presetList" class="mt-3">
+                                <div class="alert alert-secondary" id="noPresetsMsg">
+                                    저장된 프리셋이 없습니다
+                                </div>
+                                <!-- 여기에 프리셋 버튼이 추가됩니다 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 추적 설정 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">조류 추적 설정</h5>
+                </div>
+                <div class="card-body">
+                    <div class="tracking-panel">
+                        <div class="mb-3">
+                            <button id="startTrackingBtn" class="btn btn-success w-100">
+                                <i class="fas fa-play"></i> 추적 시작
+                            </button>
+                        </div>
+                        <div class="mb-3">
+                            <button id="stopTrackingBtn" class="btn btn-danger w-100" disabled>
+                                <i class="fas fa-stop"></i> 추적 중지
+                            </button>
+                        </div>
+                        
+                        <div class="scan-settings">
+                            <h6 class="mb-2">영역 스캔 설정</h6>
+                            <div class="row">
+                                <div class="col-6">
+                                    <label for="horizontalSteps" class="form-label">수평 단계</label>
+                                    <input type="number" class="form-control" id="horizontalSteps" min="2" max="10" value="3">
+                                </div>
+                                <div class="col-6">
+                                    <label for="verticalSteps" class="form-label">수직 단계</label>
+                                    <input type="number" class="form-control" id="verticalSteps" min="2" max="5" value="2">
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <button id="startScanBtn" class="btn btn-primary w-100">
+                                    <i class="fas fa-search"></i> 영역 스캔 시작
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- jQuery 라이브러리 추가 -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+<script>
+    $(document).ready(function() {
+        // 전역 변수
+        let selectedCamera = null;
+        let currentSpeed = 0.7;
+        let isTracking = false;
+        let presets = {};
+        let streamRefreshInterval = null;
+        let homePosition = {
+            pan: 0.0,
+            tilt: 0.0,
+            zoom: 0.0
+        };
+        
+        // 초기 홈 위치 설정값 로드
+        function loadHomePosition() {
+            const savedHomePosition = localStorage.getItem(`ptzHomePosition_${selectedCamera}`);
+            if (savedHomePosition) {
+                try {
+                    homePosition = JSON.parse(savedHomePosition);
+                    $('#homePanValue').val(homePosition.pan);
+                    $('#homeTiltValue').val(homePosition.tilt);
+                    $('#homeZoomValue').val(homePosition.zoom);
+                } catch (e) {
+                    console.error("홈 위치 로드 오류", e);
+                    resetHomePosition();
+                }
+            } else {
+                resetHomePosition();
+            }
+        }
+        
+        // 홈 위치 기본값 재설정
+        function resetHomePosition() {
+            homePosition = {
+                pan: 0.0,
+                tilt: 0.0,
+                zoom: 0.0
+            };
+            $('#homePanValue').val(homePosition.pan);
+            $('#homeTiltValue').val(homePosition.tilt);
+            $('#homeZoomValue').val(homePosition.zoom);
+            
+            if (selectedCamera) {
+                localStorage.setItem(`ptzHomePosition_${selectedCamera}`, JSON.stringify(homePosition));
+                showAlert('홈 위치가 기본값으로 재설정되었습니다', 'info');
+            }
+        }
+        
+        // 현재 위치를 홈으로 설정
+        $('#setCurrentAsHomeBtn').on('click', function() {
+            if (!selectedCamera) {
+                showAlert('먼저 카메라를 선택하세요', 'warning');
+                return;
+            }
+            
+            updateCameraPosition(function(position) {
+                if (position) {
+                    homePosition = {
+                        pan: position.pan,
+                        tilt: position.tilt,
+                        zoom: position.zoom
+                    };
+                    
+                    $('#homePanValue').val(homePosition.pan);
+                    $('#homeTiltValue').val(homePosition.tilt);
+                    $('#homeZoomValue').val(homePosition.zoom);
+                    
+                    localStorage.setItem(`ptzHomePosition_${selectedCamera}`, JSON.stringify(homePosition));
+                    showAlert('현재 위치가 홈으로 설정되었습니다', 'success');
+                }
+            });
+        });
+        
+        // 홈 위치 재설정 버튼
+        $('#resetHomeBtn').on('click', function() {
+            if (!selectedCamera) {
+                showAlert('먼저 카메라를 선택하세요', 'warning');
+                return;
+            }
+            
+            resetHomePosition();
+        });
+        
+        // 홈 위치 수동 입력 처리
+        $('#homePanValue, #homeTiltValue, #homeZoomValue').on('change', function() {
+            if (!selectedCamera) return;
+            
+            homePosition = {
+                pan: parseFloat($('#homePanValue').val()) || 0,
+                tilt: parseFloat($('#homeTiltValue').val()) || 0,
+                zoom: parseFloat($('#homeZoomValue').val()) || 0
+            };
+            
+            localStorage.setItem(`ptzHomePosition_${selectedCamera}`, JSON.stringify(homePosition));
+        });
+        
+        // 카메라 선택 이벤트
+        $('#cameraSelect').on('change', function() {
+            selectedCamera = $(this).val();
+            const rtspUrl = $(this).find(':selected').data('rtsp');
+            
+            if (selectedCamera) {
+                // 카메라 피드 표시 (여기서는 메시지만 업데이트)
+                $('#cameraFeed').html(`<p>카메라 ${selectedCamera} 연결 중...</p>`);
+                
+                // 이전 스트림 새로고침 간격 제거
+                if (streamRefreshInterval) {
+                    clearInterval(streamRefreshInterval);
+                }
+                
+                // 해당 카메라의 홈 위치 로드
+                loadHomePosition();
+                
+                // 카메라 연결 및 PTZ 세션 설정 API 호출
+                $.ajax({
+                    url: '/api/ptz/setup/',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        camera_id: selectedCamera,
+                        rtsp_url: rtspUrl
+                    }),
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            showAlert('카메라 연결 성공', 'success');
+                            // 카메라 정보 업데이트
+                            updateCameraPosition();
+                            // 프리셋 목록 가져오기
+                            getPresets();
+                            
+                            // 카메라 피드 로드
+                            updateCameraFeed();
+                            
+                            // 주기적으로 카메라 피드 새로고침
+                            streamRefreshInterval = setInterval(updateCameraFeed, 1000);
+                        } else {
+                            showAlert('카메라 연결 실패: ' + response.message, 'danger');
+                        }
+                    },
+                    error: function(xhr) {
+                        let errorMsg = '카메라 연결 중 오류가 발생했습니다';
+                        try {
+                            errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                        } catch(e) {}
+                        showAlert(errorMsg, 'danger');
+                    }
+                });
+            } else {
+                // 카메라가 선택되지 않은 경우
+                $('#cameraFeed').html('<p>카메라를 선택하면 여기에 영상이 표시됩니다</p>');
+                resetPositionInfo();
+                
+                // 스트림 새로고침 간격 제거
+                if (streamRefreshInterval) {
+                    clearInterval(streamRefreshInterval);
+                    streamRefreshInterval = null;
+                }
+            }
+        });
+        
+        // 카메라 피드 업데이트 함수
+        function updateCameraFeed() {
+            if (!selectedCamera) return;
+            
+            // 캐시 방지를 위한 타임스탬프 추가
+            const timestamp = new Date().getTime();
+            const imageUrl = `/camera/${selectedCamera}/?t=${timestamp}`;
+            
+            // 이미지가 이미 있는지 확인
+            if ($('#cameraFeed img').length === 0) {
+                // 이미지가 없으면 새로 생성
+                $('#cameraFeed').html(`<img src="${imageUrl}" alt="Camera ${selectedCamera}" />`);
+            } else {
+                // 이미지가 있으면 소스만 업데이트
+                $('#cameraFeed img').attr('src', imageUrl);
+            }
+        }
+        
+        // PTZ 버튼 클릭 이벤트
+        $('.ptz-btn').on('mousedown touchstart', function(e) {
+            e.preventDefault();
+            
+            if (!selectedCamera) {
+                showAlert('먼저 카메라를 선택하세요', 'warning');
+                return;
+            }
+            
+            const direction = $(this).data('direction');
+            
+            // 홈 위치 버튼 (중앙 버튼)
+            if (direction === 'HOME') {
+                goToHomePosition();
+                return;
+            }
+            
+            if (direction === 'STOP') {
+                stopMovement();
+                return;
+            }
+            
+            // API 호출
+            $.ajax({
+                url: '/api/ptz/control/',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    camera_id: selectedCamera,
+                    direction: direction,
+                    is_continuous: true,
+                    speed: currentSpeed
+                }),
+                success: function(response) {
+                    if (response.status !== 'success') {
+                        showAlert('제어 명령 실패: ' + response.message, 'danger');
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = '제어 명령 중 오류가 발생했습니다';
+                    try {
+                        errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                    } catch(e) {}
+                    showAlert(errorMsg, 'danger');
+                }
+            });
+        });
+        
+        // 홈 위치로 이동 함수
+        function goToHomePosition() {
+            if (!selectedCamera) return;
+            
+            // 좌표 이동을 위한 API 호출
+            $.ajax({
+                url: '/api/ptz/preset/goto/',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    camera_id: selectedCamera,
+                    preset_name: '__HOME__',
+                    position: homePosition
+                }),
+                success: function(response) {
+                    if (response.status === 'success') {
+                        showAlert('홈 위치로 이동합니다', 'success');
+                        // 잠시 후 위치 정보 업데이트
+                        setTimeout(updateCameraPosition, 1000);
+                    } else {
+                        showAlert('홈 위치 이동 실패: ' + response.message, 'danger');
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = '홈 위치 이동 중 오류가 발생했습니다';
+                    try {
+                        errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                    } catch(e) {}
+                    showAlert(errorMsg, 'danger');
+                    
+                    // 에러 발생 시 직접 좌표 이동 시도
+                    moveToCoordinates(homePosition);
+                }
+            });
+        }
+        
+        // 직접 좌표 이동 함수 (대체 방법)
+        function moveToCoordinates(coordinates) {
+            $.ajax({
+                url: '/api/ptz/control/',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    camera_id: selectedCamera,
+                    direction: 'GOTO',
+                    coordinates: coordinates,
+                    is_continuous: false
+                }),
+                success: function(response) {
+                    if (response.status === 'success') {
+                        showAlert('좌표로 이동합니다', 'success');
+                        setTimeout(updateCameraPosition, 1000);
+                    } else {
+                        showAlert('좌표 이동 실패: ' + response.message, 'danger');
+                    }
+                },
+                error: function(xhr) {
+                    showAlert('좌표 이동 중 오류가 발생했습니다', 'danger');
+                }
+            });
+        }
+        
+        // 버튼 떼면 정지
+        $('.ptz-btn').on('mouseup mouseleave touchend', function(e) {
+            e.preventDefault();
+            
+            if (!selectedCamera) {
+                return;
+            }
+            
+            const direction = $(this).data('direction');
+            if (direction !== 'STOP' && direction !== 'HOME') {
+                stopMovement();
+            }
+        });
+        
+        // 정지 함수
+        function stopMovement() {
+            $.ajax({
+                url: '/api/ptz/control/',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    camera_id: selectedCamera,
+                    direction: 'STOP',
+                    is_continuous: false
+                }),
+                error: function(xhr) {
+                    console.error('정지 명령 오류', xhr);
+                }
+            });
+        }
+        
+        // 속도 제어
+        $('#speedControl').on('input', function() {
+            currentSpeed = parseFloat($(this).val());
+        });
+        
+        // 현재 위치 업데이트
+        $('#getPositionBtn').on('click', function() {
+            if (!selectedCamera) {
+                showAlert('먼저 카메라를 선택하세요', 'warning');
+                return;
+            }
+            
+            updateCameraPosition();
+        });
+        
+        // 위치 정보 가져오기 함수
+        function updateCameraPosition(callback) {
+            $.ajax({
+                url: `/api/ptz/position/${selectedCamera}/`,
+                type: 'GET',
+                success: function(response) {
+                    if (response.status === 'success') {
+                        const position = response.position;
+                        if (position) {
+                            $('#panValue').text(position.pan.toFixed(2));
+                            $('#tiltValue').text(position.tilt.toFixed(2));
+                            $('#zoomValue').text(position.zoom.toFixed(2));
+                            
+                            // 콜백이 있으면 호출
+                            if (typeof callback === 'function') {
+                                callback(position);
+                            }
+                        } else {
+                            resetPositionInfo();
+                            if (typeof callback === 'function') {
+                                callback(null);
+                            }
+                        }
+                    } else {
+                        showAlert('위치 정보를 가져오는데 실패했습니다: ' + response.message, 'danger');
+                        if (typeof callback === 'function') {
+                            callback(null);
+                        }
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = '위치 정보를 가져오는 중 오류가 발생했습니다';
+                    try {
+                        errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                    } catch(e) {}
+                    showAlert(errorMsg, 'danger');
+                    if (typeof callback === 'function') {
+                        callback(null);
+                    }
+                }
+            });
+        }
+        
+        // 위치 정보 초기화
+        function resetPositionInfo() {
+            $('#panValue').text('-');
+            $('#tiltValue').text('-');
+            $('#zoomValue').text('-');
+        }
+        
+        // 프리셋 저장
+        $('#savePresetBtn').on('click', function() {
+            if (!selectedCamera) {
+                showAlert('먼저 카메라를 선택하세요', 'warning');
+                return;
+            }
+            
+            const presetName = $('#presetName').val().trim();
+            if (!presetName) {
+                showAlert('프리셋 이름을 입력하세요', 'warning');
+                return;
+            }
+            
+            // 프리셋 이름이 숫자로만 이루어져 있는지 확인
+            if (/^\d+$/.test(presetName)) {
+                showAlert('프리셋 이름은 숫자만으로 지정할 수 없습니다. 영문자나 한글을 포함해주세요.', 'warning');
+                return;
+            }
+            
+            $.ajax({
+                url: '/api/ptz/preset/save/',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    camera_id: selectedCamera,
+                    preset_name: presetName
+                }),
+                success: function(response) {
+                    if (response.status === 'success') {
+                        showAlert('프리셋이 저장되었습니다', 'success');
+                        $('#presetName').val('');
+                        getPresets();
+                    } else {
+                        showAlert('프리셋 저장 실패: ' + response.message, 'danger');
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = '프리셋 저장 중 오류가 발생했습니다';
+                    try {
+                        errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                    } catch(e) {}
+                    showAlert(errorMsg, 'danger');
+                }
+            });
+        });
+        
+        // 프리셋 목록 가져오기
+        function getPresets() {
+            if (!selectedCamera) {
+                return;
+            }
+            
+            $.ajax({
+                url: `/api/ptz/preset/list/${selectedCamera}/`,
+                type: 'GET',
+                success: function(response) {
+                    if (response.status === 'success') {
+                        presets = response.presets || {};
+                        updatePresetList();
+                    }
+                },
+                error: function(xhr) {
+                    console.error('프리셋 목록 가져오기 오류', xhr);
+                }
+            });
+        }
+        
+        // 프리셋 목록 업데이트
+        function updatePresetList() {
+            const $presetList = $('#presetList');
+            $presetList.empty();
+            
+            if (Object.keys(presets).length === 0) {
+                $presetList.append('<div class="alert alert-secondary" id="noPresetsMsg">저장된 프리셋이 없습니다</div>');
+                return;
+            }
+            
+            Object.keys(presets).forEach(function(presetName) {
+                const $presetBtn = $(`
+                    <div class="preset-btn">
+                        <button class="btn btn-outline-primary" data-name="${presetName}">
+                            ${presetName}
+                        </button>
+                        <button class="btn btn-danger delete-btn" data-name="${presetName}">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                `);
+                $presetList.append($presetBtn);
+            });
+        }
+        
+        // 프리셋 버튼 클릭 이벤트 (동적 요소)
+        $(document).on('click', '.preset-btn .btn-outline-primary', function() {
+            const presetName = $(this).data('name');
+            
+            $.ajax({
+                url: '/api/ptz/preset/goto/',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    camera_id: selectedCamera,
+                    preset_name: presetName
+                }),
+                success: function(response) {
+                    if (response.status === 'success') {
+                        showAlert(`프리셋 '${presetName}'으로 이동합니다`, 'success');
+                        // 잠시 후 위치 정보 업데이트
+                        setTimeout(updateCameraPosition, 1000);
+                    } else {
+                        showAlert('프리셋 이동 실패: ' + response.message, 'danger');
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = '프리셋 이동 중 오류가 발생했습니다';
+                    try {
+                        errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                    } catch(e) {}
+                    showAlert(errorMsg, 'danger');
+                }
+            });
+        });
+        
+        // 프리셋 삭제 버튼 클릭 이벤트 (동적 요소)
+        $(document).on('click', '.preset-btn .delete-btn', function(e) {
+            e.stopPropagation();
+            const presetName = $(this).data('name');
+            
+            if (confirm(`프리셋 '${presetName}'을(를) 삭제하시겠습니까?`)) {
+                // 서버에 삭제 요청
+                $.ajax({
+                    url: '/api/ptz/preset/delete/',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        camera_id: selectedCamera,
+                        preset_name: presetName
+                    }),
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            showAlert(`프리셋 '${presetName}'이(가) 삭제되었습니다`, 'success');
+                            // 프리셋 목록 갱신
+                            getPresets();
+                        } else {
+                            showAlert('프리셋 삭제 실패: ' + response.message, 'danger');
+                        }
+                    },
+                    error: function(xhr) {
+                        let errorMsg = '프리셋 삭제 중 오류가 발생했습니다';
+                        try {
+                            errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                        } catch(e) {}
+                        showAlert(errorMsg, 'danger');
+                    }
+                });
+            }
+        });
+        
+        // 추적 시작
+        $('#startTrackingBtn').on('click', function() {
+            if (!selectedCamera) {
+                showAlert('먼저 카메라를 선택하세요', 'warning');
+                return;
+            }
+            
+            $.ajax({
+                url: '/api/ptz/tracking/start/',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    camera_id: selectedCamera
+                }),
+                success: function(response) {
+                    if (response.status === 'success') {
+                        isTracking = true;
+                        showAlert('조류 추적이 시작되었습니다', 'success');
+                        updateTrackingButtons();
+                    } else {
+                        showAlert('추적 시작 실패: ' + response.message, 'danger');
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = '추적 시작 중 오류가 발생했습니다';
+                    try {
+                        errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                    } catch(e) {}
+                    showAlert(errorMsg, 'danger');
+                }
+            });
+        });
+        
+        // 추적 중지
+        $('#stopTrackingBtn').on('click', function() {
+            if (!selectedCamera) {
+                return;
+            }
+            
+            $.ajax({
+                url: '/api/ptz/tracking/stop/',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    camera_id: selectedCamera
+                }),
+                success: function(response) {
+                    if (response.status === 'success') {
+                        isTracking = false;
+                        showAlert('조류 추적이 중지되었습니다', 'success');
+                        updateTrackingButtons();
+                    } else {
+                        showAlert('추적 중지 실패: ' + response.message, 'danger');
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = '추적 중지 중 오류가 발생했습니다';
+                    try {
+                        errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                    } catch(e) {}
+                    showAlert(errorMsg, 'danger');
+                }
+            });
+        });
+        
+        // 영역 스캔 시작
+        $('#startScanBtn').on('click', function() {
+            if (!selectedCamera) {
+                showAlert('먼저 카메라를 선택하세요', 'warning');
+                return;
+            }
+            
+            const horizontalSteps = parseInt($('#horizontalSteps').val());
+            const verticalSteps = parseInt($('#verticalSteps').val());
+            
+            $.ajax({
+                url: '/api/ptz/scan/',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    camera_id: selectedCamera,
+                    horizontal_steps: horizontalSteps,
+                    vertical_steps: verticalSteps
+                }),
+                success: function(response) {
+                    if (response.status === 'success') {
+                        showAlert('영역 스캔이 시작되었습니다', 'success');
+                    } else {
+                        showAlert('영역 스캔 시작 실패: ' + response.message, 'danger');
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = '영역 스캔 시작 중 오류가 발생했습니다';
+                    try {
+                        errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                    } catch(e) {}
+                    showAlert(errorMsg, 'danger');
+                }
+            });
+        });
+        
+        // 추적 버튼 상태 업데이트
+        function updateTrackingButtons() {
+            if (isTracking) {
+                $('#startTrackingBtn').prop('disabled', true);
+                $('#stopTrackingBtn').prop('disabled', false);
+            } else {
+                $('#startTrackingBtn').prop('disabled', false);
+                $('#stopTrackingBtn').prop('disabled', true);
+            }
+        }
+        
+        // 알림 표시 함수
+        function showAlert(message, type = 'info') {
+            const alertHTML = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `;
+            
+            // 기존 알림 제거
+            $('.alert-container').remove();
+            
+            // 새 알림 추가
+            const $alertContainer = $('<div class="alert-container" style="position: fixed; top: 20px; right: 20px; z-index: 9999;"></div>');
+            $alertContainer.html(alertHTML);
+            $('body').append($alertContainer);
+            
+            // 3초 후 자동 제거
+            setTimeout(function() {
+                $alertContainer.fadeOut(500, function() {
+                    $(this).remove();
+                });
+            }, 3000);
+        }
+    });
+</script>
+{% endblock %} 

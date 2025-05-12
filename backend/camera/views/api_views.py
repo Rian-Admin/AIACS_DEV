@@ -11,6 +11,7 @@ from datetime import datetime
 from ..yolo.detector import ObjectDetector
 from ..hardware.bird_controller import BirdController
 from ..hardware.ptz_manager import PTZManager
+from ..hardware.ptz_xyz import PTZTrackerController
 import numpy as np
 import cv2
 
@@ -495,142 +496,599 @@ def control_ptz(request):
         direction = data.get('direction')
         is_continuous = data.get('is_continuous', True)
         speed = data.get('speed', 0.7)
+        coordinates = data.get('coordinates')  # 추가: 직접 좌표 이동을 위한 좌표 데이터
         
         # 필수 파라미터 검증
         if camera_id is None:
             return JsonResponse({
-                'status': 'error',
-                'message': 'camera_id가 필요합니다'
+                'status': 'error', 
+                'message': '카메라 ID가 필요합니다'
             }, status=400)
-            
-        if direction is None:
+        
+        # 일반 방향 제어인지 좌표 이동인지 확인
+        if direction == 'GOTO' and coordinates:
+            # 좌표 이동 처리
+            return goto_coordinates(camera_id, coordinates)
+        
+        # 일반 방향 제어일 경우, 방향이 필요
+        if direction is None and is_continuous:
             return JsonResponse({
-                'status': 'error',
-                'message': 'direction이 필요합니다'
+                'status': 'error', 
+                'message': '방향이 필요합니다'
             }, status=400)
             
-        # direction 값 검증
-        valid_directions = ["LEFT", "RIGHT", "UP", "DOWN", "ZOOM_IN", "ZOOM_OUT"]
-        if direction not in valid_directions:
-            return JsonResponse({
-                'status': 'error',
-                'message': f'유효하지 않은 direction 값입니다. 유효한 값: {", ".join(valid_directions)}'
-            }, status=400)
-            
-        # 카메라 정보 가져오기
+        # 값 유효성 검증    
         try:
-            camera = Camera.objects.get(camera_id=camera_id)
-        except Camera.DoesNotExist:
+            if speed is not None:
+                speed = float(speed)
+                if not (0.0 < speed <= 1.0):
+                    return JsonResponse({
+                        'status': 'error', 
+                        'message': '속도는 0.0~1.0 사이의 값이어야 합니다'
+                    }, status=400)
+        except ValueError:
             return JsonResponse({
-                'status': 'error',
-                'message': f'카메라 ID {camera_id}를 찾을 수 없습니다'
-            }, status=404)
-            
-        # 카메라 RTSP URL 확인
-        if not camera.rtsp_address:
-            return JsonResponse({
-                'status': 'error',
-                'message': f'카메라 ID {camera_id}의 RTSP 주소가 설정되지 않았습니다'
+                'status': 'error', 
+                'message': '속도는 숫자여야 합니다'
             }, status=400)
-            
-        # PTZ 매니저 인스턴스 가져오기
+        
+        # PTZ 매니저 가져오기
         ptz_manager = PTZManager.get_instance()
         
-        # PTZ 세션 설정 (없는 경우 초기화)
-        # 카메라 모델에 ONVIF 정보 필드가 없는 경우 기본값 사용
-        if hasattr(camera, 'onvif_username') and camera.onvif_username:
-            username = camera.onvif_username
-        else:
-            username = 'admin'
-            
-        if hasattr(camera, 'onvif_password') and camera.onvif_password:
-            password = camera.onvif_password
-        else:
-            password = 'admin123'
-            
-        if hasattr(camera, 'onvif_port') and camera.onvif_port:
-            port = camera.onvif_port
-        else:
-            port = 80
-            
-        # PTZ 세션 설정이 되어 있지 않으면 설정 시도
-        if not ptz_manager.setup_onvif_ptz(camera_id, camera.rtsp_address, username, password, port):
+        # 카메라 URL 가져오기
+        camera_manager = CameraManager.get_instance()
+        rtsp_url = camera_manager.get_camera_url(camera_id)
+        
+        if rtsp_url is None:
             return JsonResponse({
-                'status': 'error',
-                'message': f'카메라 ID {camera_id}의 PTZ 설정에 실패했습니다'
+                'status': 'error', 
+                'message': f'카메라 {camera_id}의 URL을 찾을 수 없습니다'
+            }, status=404)
+        
+        # PTZ 설정이 아직 되지 않았다면 설정
+        if not ptz_manager.setup_onvif_ptz(camera_id, rtsp_url):
+            return JsonResponse({
+                'status': 'error', 
+                'message': f'카메라 {camera_id}의 PTZ 설정 실패'
             }, status=500)
-            
-        # PTZ 제어 실행
-        result = ptz_manager.control_ptz(camera_id, direction, is_continuous, speed)
+        
+        # 방향에 따른 제어 수행
+        if is_continuous:
+            # 이동 시작 명령
+            if direction == 'STOP':
+                result = ptz_manager.control_ptz(camera_id, "", is_continuous=False)
+            else:
+                result = ptz_manager.control_ptz(camera_id, direction, is_continuous=True, speed=speed)
+        else:
+            # 정지 명령
+            result = ptz_manager.control_ptz(camera_id, "", is_continuous=False)
         
         if result:
-            action = "이동 시작" if is_continuous else "정지"
+            logger.info(f"카메라 {camera_id} PTZ 제어 성공: {direction if is_continuous else '정지'}")
             return JsonResponse({
                 'status': 'success',
-                'message': f'카메라 {camera_id} PTZ {direction} {action} 명령이 성공적으로 전송되었습니다',
-                'is_moving': ptz_manager.is_ptz_moving(camera_id)
+                'message': f"PTZ 제어 성공: {direction if is_continuous else '정지'}"
             })
         else:
             return JsonResponse({
-                'status': 'error',
-                'message': f'카메라 {camera_id} PTZ 제어 명령 전송에 실패했습니다'
+                'status': 'error', 
+                'message': 'PTZ 제어 실패'
             }, status=500)
             
     except json.JSONDecodeError:
         return JsonResponse({
-            'status': 'error',
-            'message': '잘못된 JSON 형식입니다'
+            'status': 'error', 
+            'message': '잘못된 JSON 형식'
         }, status=400)
     except Exception as e:
-        logger.error(f"PTZ 제어 오류: {str(e)}")
+        logger.error(f"PTZ 제어 중 오류: {e}")
         return JsonResponse({
-            'status': 'error',
-            'message': f'PTZ 제어 중 오류가 발생했습니다: {str(e)}'
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
+        }, status=500)
+
+# 좌표 이동 처리 헬퍼 함수
+def goto_coordinates(camera_id, coordinates):
+    """특정 좌표로 카메라 이동
+
+    Args:
+        camera_id: 카메라 ID
+        coordinates: 이동할 좌표 (pan, tilt, zoom)
+
+    Returns:
+        JsonResponse: 결과 응답
+    """
+    try:
+        # 좌표 유효성 검증
+        if not isinstance(coordinates, dict):
+            return JsonResponse({
+                'status': 'error', 
+                'message': '좌표는 객체 형식이어야 합니다'
+            }, status=400)
+            
+        for key in ['pan', 'tilt', 'zoom']:
+            if key not in coordinates:
+                coordinates[key] = 0.0  # 없는 키는 기본값 0으로 설정
+        
+        # PTZ 트래커 컨트롤러 가져오기 (절대 좌표 이동 지원)
+        ptz_tracker = PTZTrackerController.get_instance()
+        
+        # 카메라 URL 가져오기
+        camera_manager = CameraManager.get_instance()
+        rtsp_url = camera_manager.get_camera_url(camera_id)
+        
+        if rtsp_url is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': f'카메라 {camera_id}의 URL을 찾을 수 없습니다'
+            }, status=404)
+        
+        # PTZ 설정
+        if camera_id not in ptz_tracker.ptz_sessions:
+            result = ptz_tracker.setup_onvif_ptz(camera_id, rtsp_url)
+            if not result:
+                return JsonResponse({
+                    'status': 'error', 
+                    'message': f'카메라 {camera_id}의 PTZ 설정 실패'
+                }, status=500)
+        
+        # 좌표 이동
+        result = ptz_tracker.track_to_coordinates(camera_id, coordinates)
+        
+        if result:
+            logger.info(f"카메라 {camera_id} 좌표 이동 성공: {coordinates}")
+            return JsonResponse({
+                'status': 'success',
+                'message': f"좌표 이동 성공: {coordinates}"
+            })
+        else:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '좌표 이동 실패'
+            }, status=500)
+            
+    except Exception as e:
+        logger.error(f"좌표 이동 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
         }, status=500)
 
 @csrf_exempt
 def get_ptz_position(request, camera_id):
-    """PTZ 카메라 현재 위치 정보 가져오기 API"""
+    """PTZ 카메라 위치 정보 조회 API"""
     try:
-        # 카메라 정보 가져오기
-        try:
-            camera = Camera.objects.get(camera_id=camera_id)
-        except Camera.DoesNotExist:
-            return JsonResponse({
-                'status': 'error',
-                'message': f'카메라 ID {camera_id}를 찾을 수 없습니다'
-            }, status=404)
-            
-        # PTZ 매니저 인스턴스 가져오기
+        # PTZ 매니저 가져오기
         ptz_manager = PTZManager.get_instance()
         
-        # 위치 정보 가져오기
+        # 현재 위치 가져오기
         position = ptz_manager.get_camera_position(camera_id)
         
-        if position is not None:
+        if position:
             return JsonResponse({
                 'status': 'success',
-                'camera_id': camera_id,
-                'position': position,
-                'is_moving': ptz_manager.is_ptz_moving(camera_id)
+                'position': position
             })
         else:
             return JsonResponse({
-                'status': 'error',
+                'status': 'error', 
                 'message': f'카메라 {camera_id}의 위치 정보를 가져올 수 없습니다'
-            }, status=500)
-            
+            }, status=404)
+        
     except Exception as e:
-        logger.error(f"PTZ 위치 정보 가져오기 오류: {str(e)}")
+        logger.error(f"PTZ 위치 정보 조회 중 오류: {e}")
         return JsonResponse({
-            'status': 'error',
-            'message': f'PTZ 위치 정보 가져오기 중 오류가 발생했습니다: {str(e)}'
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
         }, status=500)
 
-# 카메라 재연결 엔드포인트 추가
+# PTZ 추적 컨트롤러 API 추가
+@csrf_exempt
+def ptz_setup(request):
+    """PTZ 추적 컨트롤러 설정 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST 요청만 허용됩니다'}, status=405)
+        
+    try:
+        # 요청 데이터 파싱
+        data = json.loads(request.body)
+        camera_id = data.get('camera_id')
+        rtsp_url = data.get('rtsp_url')
+        username = data.get('username', 'admin')
+        password = data.get('password', 'admin123')
+        port = data.get('port', 80)
+        
+        # 필수 파라미터 검증
+        if camera_id is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '카메라 ID가 필요합니다'
+            }, status=400)
+            
+        if rtsp_url is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'RTSP URL이 필요합니다'
+            }, status=400)
+        
+        # PTZ 추적 컨트롤러 가져오기
+        ptz_tracker = PTZTrackerController.get_instance()
+        
+        # PTZ 설정
+        result = ptz_tracker.setup_onvif_ptz(camera_id, rtsp_url, username, password, port)
+        
+        if result:
+            logger.info(f"카메라 {camera_id} PTZ 추적 컨트롤러 설정 성공")
+            return JsonResponse({
+                'status': 'success',
+                'message': f"PTZ 추적 컨트롤러 설정 성공"
+            })
+        else:
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'PTZ 추적 컨트롤러 설정 실패'
+            }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'status': 'error', 
+            'message': '잘못된 JSON 형식'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"PTZ 추적 컨트롤러 설정 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def ptz_tracking_start(request):
+    """PTZ 추적 시작 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST 요청만 허용됩니다'}, status=405)
+        
+    try:
+        # 요청 데이터 파싱
+        data = json.loads(request.body)
+        camera_id = data.get('camera_id')
+        detection_data = data.get('detection_data')
+        
+        # 필수 파라미터 검증
+        if camera_id is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '카메라 ID가 필요합니다'
+            }, status=400)
+        
+        # PTZ 추적 컨트롤러 가져오기
+        ptz_tracker = PTZTrackerController.get_instance()
+        
+        # 추적 시작
+        result = ptz_tracker.start_tracking(camera_id, detection_data)
+        
+        if result:
+            logger.info(f"카메라 {camera_id} 조류 추적 시작")
+            return JsonResponse({
+                'status': 'success',
+                'message': f"조류 추적 시작됨"
+            })
+        else:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '조류 추적 시작 실패'
+            }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'status': 'error', 
+            'message': '잘못된 JSON 형식'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"조류 추적 시작 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def ptz_tracking_stop(request):
+    """PTZ 추적 중지 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST 요청만 허용됩니다'}, status=405)
+        
+    try:
+        # 요청 데이터 파싱
+        data = json.loads(request.body)
+        camera_id = data.get('camera_id')
+        
+        # 필수 파라미터 검증
+        if camera_id is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '카메라 ID가 필요합니다'
+            }, status=400)
+        
+        # PTZ 추적 컨트롤러 가져오기
+        ptz_tracker = PTZTrackerController.get_instance()
+        
+        # 추적 중지
+        result = ptz_tracker.stop_tracking(camera_id)
+        
+        if result:
+            logger.info(f"카메라 {camera_id} 조류 추적 중지")
+            return JsonResponse({
+                'status': 'success',
+                'message': f"조류 추적 중지됨"
+            })
+        else:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '조류 추적 중지 실패'
+            }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'status': 'error', 
+            'message': '잘못된 JSON 형식'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"조류 추적 중지 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def ptz_preset_save(request):
+    """PTZ 프리셋 저장 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST 요청만 허용됩니다'}, status=405)
+        
+    try:
+        # 요청 데이터 파싱
+        data = json.loads(request.body)
+        camera_id = data.get('camera_id')
+        preset_name = data.get('preset_name')
+        
+        # 필수 파라미터 검증
+        if camera_id is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '카메라 ID가 필요합니다'
+            }, status=400)
+            
+        if preset_name is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '프리셋 이름이 필요합니다'
+            }, status=400)
+        
+        # PTZ 추적 컨트롤러 가져오기
+        ptz_tracker = PTZTrackerController.get_instance()
+        
+        # 프리셋 저장
+        result = ptz_tracker.set_preset(camera_id, preset_name)
+        
+        if result:
+            logger.info(f"카메라 {camera_id} 프리셋 '{preset_name}' 저장됨")
+            return JsonResponse({
+                'status': 'success',
+                'message': f"프리셋 '{preset_name}' 저장됨"
+            })
+        else:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '프리셋 저장 실패'
+            }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'status': 'error', 
+            'message': '잘못된 JSON 형식'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"프리셋 저장 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def ptz_preset_goto(request):
+    """PTZ 프리셋 이동 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST 요청만 허용됩니다'}, status=405)
+        
+    try:
+        # 요청 데이터 파싱
+        data = json.loads(request.body)
+        camera_id = str(data.get('camera_id', ''))  # 문자열로 변환
+        preset_name = data.get('preset_name')
+        position = data.get('position')  # 직접 위치 지정
+        
+        # 필수 파라미터 검증
+        if not camera_id:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '카메라 ID가 필요합니다'
+            }, status=400)
+            
+        if preset_name is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '프리셋 이름이 필요합니다'
+            }, status=400)
+        
+        # 직접 좌표 지정된 경우 (홈 위치로 이동 등)
+        if position and preset_name == '__HOME__':
+            # 좌표로 직접 이동
+            return goto_coordinates(camera_id, position)
+        
+        # PTZ 추적 컨트롤러 가져오기
+        ptz_tracker = PTZTrackerController.get_instance()
+        
+        # 프리셋으로 이동
+        result = ptz_tracker.goto_preset(camera_id, preset_name)
+        
+        if result:
+            logger.info(f"카메라 {camera_id} 프리셋 '{preset_name}'으로 이동")
+            return JsonResponse({
+                'status': 'success',
+                'message': f"프리셋 '{preset_name}'으로 이동 중"
+            })
+        else:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '프리셋 이동 실패'
+            }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'status': 'error', 
+            'message': '잘못된 JSON 형식'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"프리셋 이동 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def ptz_preset_delete(request):
+    """PTZ 프리셋 삭제 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST 요청만 허용됩니다'}, status=405)
+        
+    try:
+        # 요청 데이터 파싱
+        data = json.loads(request.body)
+        camera_id = str(data.get('camera_id', ''))  # 문자열로 변환
+        preset_name = data.get('preset_name')
+        
+        # 필수 파라미터 검증
+        if not camera_id:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '카메라 ID가 필요합니다'
+            }, status=400)
+            
+        if preset_name is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '프리셋 이름이 필요합니다'
+            }, status=400)
+        
+        # PTZ 추적 컨트롤러 가져오기
+        ptz_tracker = PTZTrackerController.get_instance()
+        
+        # 프리셋 삭제
+        result = ptz_tracker.delete_preset(camera_id, preset_name)
+        
+        if result:
+            logger.info(f"카메라 {camera_id} 프리셋 '{preset_name}' 삭제됨")
+            return JsonResponse({
+                'status': 'success',
+                'message': f"프리셋 '{preset_name}' 삭제됨"
+            })
+        else:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '프리셋 삭제 실패'
+            }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'status': 'error', 
+            'message': '잘못된 JSON 형식'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"프리셋 삭제 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def ptz_preset_list(request, camera_id):
+    """PTZ 프리셋 목록 조회 API"""
+    try:
+        # 카메라 ID를 문자열로 변환
+        camera_id = str(camera_id)
+        
+        # PTZ 추적 컨트롤러 가져오기
+        ptz_tracker = PTZTrackerController.get_instance()
+        
+        # 프리셋 목록 가져오기
+        presets = {}
+        if camera_id in ptz_tracker.preset_positions:
+            presets = ptz_tracker.preset_positions[camera_id]
+            
+        return JsonResponse({
+            'status': 'success',
+            'presets': presets
+        })
+            
+    except Exception as e:
+        logger.error(f"프리셋 목록 조회 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def ptz_scan(request):
+    """PTZ 영역 스캔 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST 요청만 허용됩니다'}, status=405)
+        
+    try:
+        # 요청 데이터 파싱
+        data = json.loads(request.body)
+        camera_id = data.get('camera_id')
+        horizontal_steps = data.get('horizontal_steps', 3)
+        vertical_steps = data.get('vertical_steps', 2)
+        
+        # 필수 파라미터 검증
+        if camera_id is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '카메라 ID가 필요합니다'
+            }, status=400)
+        
+        # PTZ 추적 컨트롤러 가져오기
+        ptz_tracker = PTZTrackerController.get_instance()
+        
+        # 영역 스캔 시작
+        result = ptz_tracker.scan_area(camera_id, horizontal_steps, vertical_steps)
+        
+        if result:
+            logger.info(f"카메라 {camera_id} 영역 스캔 시작 (가로 {horizontal_steps}단계, 세로 {vertical_steps}단계)")
+            return JsonResponse({
+                'status': 'success',
+                'message': f"영역 스캔 시작됨 (가로 {horizontal_steps}단계, 세로 {vertical_steps}단계)"
+            })
+        else:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '영역 스캔 시작 실패'
+            }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'status': 'error', 
+            'message': '잘못된 JSON 형식'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"영역 스캔 시작 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
+        }, status=500)
+
 @csrf_exempt
 def reconnect_camera(request, camera_id):
-    """특정 카메라를 강제로 재연결하는 API"""
+    """카메라 재연결 API"""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': '잘못된 요청 메소드'}, status=405)
     

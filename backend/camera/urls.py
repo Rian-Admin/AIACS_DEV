@@ -1,6 +1,6 @@
 # urls.py
 from django.urls import path
-from .views.camera_views import index, camera_feed
+from .views.camera_views import index, camera_feed, ptz_controller
 from .views.api_views import get_recent_detections, get_detection_stats, get_db_status, get_cameras
 from .views.api_views import set_yolo_conf, get_yolo_info, enable_controller, disable_controller
 from .views import api_views
@@ -21,6 +21,11 @@ from .views.speaker_management import (
 # 방위각 설정 뷰 함수 가져오기
 from .views.azimuth_setting import (
     azimuth_setting_view, add_azimuth, update_azimuth, delete_azimuth, get_azimuth
+)
+# PTZ 추적 컨트롤러 API 함수 가져오기
+from .views.api_views import (
+    ptz_setup, ptz_tracking_start, ptz_tracking_stop, 
+    ptz_preset_save, ptz_preset_goto, ptz_preset_list, ptz_scan, ptz_preset_delete
 )
 
 urlpatterns = [
@@ -105,6 +110,19 @@ urlpatterns = [
     # API - PTZ 카메라 제어
     path('api/ptz/control/', control_ptz, name='control_ptz'),
     path('api/ptz/position/<str:camera_id>/', get_ptz_position, name='get_ptz_position'),
+    
+    # API - PTZ 추적 컨트롤러
+    path('api/ptz/setup/', ptz_setup, name='ptz_setup'),
+    path('api/ptz/tracking/start/', ptz_tracking_start, name='ptz_tracking_start'),
+    path('api/ptz/tracking/stop/', ptz_tracking_stop, name='ptz_tracking_stop'),
+    path('api/ptz/preset/save/', ptz_preset_save, name='ptz_preset_save'),
+    path('api/ptz/preset/goto/', ptz_preset_goto, name='ptz_preset_goto'),
+    path('api/ptz/preset/delete/', ptz_preset_delete, name='ptz_preset_delete'),
+    path('api/ptz/preset/list/<str:camera_id>/', ptz_preset_list, name='ptz_preset_list'),
+    path('api/ptz/scan/', ptz_scan, name='ptz_scan'),
+    
+    # PTZ 컨트롤러 뷰
+    path('ptz-controller/', ptz_controller, name='ptz_controller'),
 
     # 방위각 설정 뷰 및 API
     path('azimuth-setting/', azimuth_setting_view, name='azimuth_setting'),

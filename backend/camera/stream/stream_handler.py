@@ -178,7 +178,7 @@ class StreamHandler:
     def _capture_frames(self):
         """프레임 캡처 스레드 - 성능 최적화 및 강화된 재연결"""
         empty_frame_count = 0
-        frame_interval = 0.01  # 100 FPS 가능 (더 부드러운 재생)
+        frame_interval = 0.033  # 100 FPS 가능 (더 부드러운 재생)
         last_frame_time = time.time()
         connection_monitor_time = time.time()  # 연결 모니터링 타이머
         connection_check_interval = 60  # 60초마다 연결 상태 확인 (기존 10초에서 변경)
