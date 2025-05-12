@@ -112,7 +112,7 @@ class StreamHandler:
                 if self.is_video_file:
                     self.video_fps = self.cap.get(cv2.CAP_PROP_FPS)
                     if self.video_fps <= 0:
-                        self.video_fps = 30  # 기본값
+                        self.video_fps = 10  # 기본값
                 
                 # RTSP 스트림인 경우 최적화 설정
                 if self.is_rtsp:
@@ -121,7 +121,7 @@ class StreamHandler:
                     # H264 코덱 명시적 지정
                     self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'H264'))
                     # FPS 설정
-                    self.cap.set(cv2.CAP_PROP_FPS, 30)
+                    self.cap.set(cv2.CAP_PROP_FPS, 10)
                 else:
                     # 비RTSP 스트림/파일에 대한 설정
                     self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
@@ -178,7 +178,7 @@ class StreamHandler:
     def _capture_frames(self):
         """프레임 캡처 스레드 - 성능 최적화 및 강화된 재연결"""
         empty_frame_count = 0
-        frame_interval = 0.001  # FPS 제한 제거 (최대 속도로 처리)
+        frame_interval = 0.1  # 10 FPS 제한 (1초 / 10 = 0.1초)
         last_frame_time = time.time()
         connection_monitor_time = time.time()  # 연결 모니터링 타이머
         connection_check_interval = 10  # 10초마다 연결 상태 확인
@@ -191,22 +191,11 @@ class StreamHandler:
                 connection_monitor_time = current_time
                 print(f"카메라 {self.camera_number} 연결 상태: {self.connection_state}, 재시도: {self.current_retry}/{self.max_retries}, 실패: {self.consecutive_failures}")
             
-            # 비디오 파일인 경우 원래 FPS에 맞춰 재생
-            if self.is_video_file:
-                # 비디오 원본 FPS에 맞게 대기
-                frame_delay = 1.0 / self.video_fps
-                time_since_last_frame = current_time - last_frame_time
-                
-                if time_since_last_frame < frame_delay:
-                    # 다음 프레임까지 대기
-                    time.sleep(max(0, frame_delay - time_since_last_frame))
-                    continue
-            else:
-                # RTSP 스트림인 경우 최소 대기 시간 적용 (CPU 부하 방지)
-                if current_time - last_frame_time < frame_interval:
-                    time.sleep(0.001)  # 아주 짧은 대기
-                    continue
-                
+            # 모든 소스에 대해 동일한 FPS 제한 적용 (비디오 파일 포함)
+            if current_time - last_frame_time < frame_interval:
+                time.sleep(0.001)  # 아주 짧은 대기
+                continue
+            
             # 캡처 상태 확인
             if self.cap is None or not self.cap.isOpened():
                 if self.current_retry < self.max_retries:

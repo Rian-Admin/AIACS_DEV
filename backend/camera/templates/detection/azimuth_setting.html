@@ -388,7 +388,7 @@
                 imageObj.onload = function() {
                     drawGuardZones();
                 };
-                imageObj.src = `/camera/snapshot/${selectedCameraId}/`;
+                imageObj.src = `/camera/${selectedCameraId}/`;
                 
                 // 카메라의 기존 Guard Zone 설정 불러오기
                 $.ajax({
@@ -429,7 +429,7 @@
                 }
                 
                 // 새 창에서 미리보기 열기
-                const previewUrl = `/camera/preview-guard-zone/${selectedCameraId}/`;
+                const previewUrl = `/api/yolo/preview-guard-zone/${selectedCameraId}/`;
                 window.open(previewUrl, 'guardZonePreview', 'width=800,height=600');
             });
             

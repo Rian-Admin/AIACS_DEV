@@ -41,6 +41,10 @@ class VideoCamera:
         self._last_frame_time = 0
         self._frame_cache_time = 0.005  # 캐시 시간 5ms로 단축 (거의 항상 새 프레임 사용)
         self._processing_lock = threading.Lock()
+        
+        # 객체 감지 처리 빈도 제한 (GPU 사용량 절감)
+        self._detection_interval = 0.1  # 10 FPS로 객체 감지 (0.1초마다 한 번)
+        self._last_detection_time = 0
 
         try:
             from ..frame.camera_manager import CameraManager
@@ -188,33 +192,46 @@ class VideoCamera:
                     # 가드존 시각화
                     frame = self.detector._draw_guard_zones(frame, camera_id_str, width, height)
                 
-                # 객체 감지 수행
-                result = self.detector.detect_objects(frame.copy(), camera_id=camera_id_str)
-                
-                # 감지 결과가 있으면 바운딩 박스 그리기
-                if result and hasattr(result, 'boxes') and hasattr(result.boxes, '__len__') and len(result.boxes) > 0:
+                # 객체 감지 처리 빈도 제한 (GPU 사용량 절감)
+                current_time = time.time()
+                if current_time - self._last_detection_time >= self._detection_interval:
+                    # 객체 감지 수행
+                    result = self.detector.detect_objects(frame.copy(), camera_id=camera_id_str)
+                    
+                    # 감지 결과가 있으면 바운딩 박스 그리기
+                    if result and hasattr(result, 'boxes') and hasattr(result.boxes, '__len__') and len(result.boxes) > 0:
+                        try:
+                            # print(f"카메라 {camera_id_str}: {len(result.boxes)}개 객체 감지됨")
+                            frame = draw_detections(frame, result, self.detector.model.names)
+                            
+                            # 감지 결과 저장 (DB 업데이트용)
+                            self._last_results = result
+                            
+                            # DB 업데이트는 비동기로 처리 (스레드가 처리할 수 있도록)
+                            with self._processing_lock:
+                                current_time = time.time()
+                                if current_time - self._last_db_update >= self._db_update_interval:
+                                    if hasattr(result, 'boxes') and hasattr(result, 'orig_shape'):
+                                        # 프레임 크기 저장
+                                        height, width = result.orig_shape
+                                        # DB 업데이트를 위한 결과 처리 직접 호출
+                                        self._process_detection_results(result.boxes, width, height)
+                                        self._last_db_update = current_time
+                            
+                        except Exception as e:
+                            logger.error(f"바운딩 박스 그리기 오류: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
+                    
+                    # 마지막 감지 시간 업데이트
+                    self._last_detection_time = current_time
+                elif self._last_results is not None:
+                    # 이전 감지 결과가 있으면 그것을 사용
                     try:
-                        print(f"카메라 {camera_id_str}: {len(result.boxes)}개 객체 감지됨")
-                        frame = draw_detections(frame, result, self.detector.model.names)
-                        
-                        # 감지 결과 저장 (DB 업데이트용)
-                        self._last_results = result
-                        
-                        # DB 업데이트는 비동기로 처리 (스레드가 처리할 수 있도록)
-                        with self._processing_lock:
-                            current_time = time.time()
-                            if current_time - self._last_db_update >= self._db_update_interval:
-                                if hasattr(result, 'boxes') and hasattr(result, 'orig_shape'):
-                                    # 프레임 크기 저장
-                                    height, width = result.orig_shape
-                                    # DB 업데이트를 위한 결과 처리 직접 호출
-                                    self._process_detection_results(result.boxes, width, height)
-                                    self._last_db_update = current_time
-                        
+                        frame = draw_detections(frame, self._last_results, self.detector.model.names)
                     except Exception as e:
-                        logger.error(f"바운딩 박스 그리기 오류: {e}")
-                        import traceback
-                        logger.error(traceback.format_exc())
+                        logger.error(f"이전 바운딩 박스 그리기 오류: {e}")
+                        pass
             
             # 감지 FPS 표시
             if hasattr(self.detector, 'get_average_fps'):

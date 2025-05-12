@@ -379,7 +379,7 @@ class CameraManager:
                 # 성능 최적화 설정
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)     # 버퍼 크기 최소화 (실시간성 확보)
                 # FPS 제한 제거 (최대 프레임 확보)
-                cap.set(cv2.CAP_PROP_FPS, 0)            # 0으로 설정하여 제한 없음
+                cap.set(cv2.CAP_PROP_FPS, 10)            # 0으로 설정하여 제한 없음
                 
                 # 정상적으로 프레임을 읽을 수 있는지 확인
                 ret, test_frame = cap.read()

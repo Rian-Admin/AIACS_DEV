@@ -195,48 +195,6 @@ def camera_feed(request, camera_id):
         _, jpeg = cv2.imencode('.jpg', empty_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
         return HttpResponse(jpeg.tobytes(), content_type='image/jpeg')
 
-def camera_snapshot(request, camera_id):
-    """카메라 스냅샷(정적 이미지) 제공"""
-    try:
-        # 캐시된 카메라 객체 사용
-        camera = get_cached_camera(camera_id)
-        
-        # 카메라 객체가 없으면 오류 프레임 반환
-        if camera is None:
-            empty_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-            cv2.putText(empty_frame, f"카메라 {camera_id}: 찾을 수 없음", 
-                       (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            _, jpeg = cv2.imencode('.jpg', empty_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-            return HttpResponse(jpeg.tobytes(), content_type='image/jpeg')
-        
-        # 스트림 핸들러 확인
-        if camera.stream_handler is None:
-            empty_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-            cv2.putText(empty_frame, f"카메라 {camera_id}: 사용 불가", 
-                       (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            _, jpeg = cv2.imencode('.jpg', empty_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-            return HttpResponse(jpeg.tobytes(), content_type='image/jpeg')
-        
-        # 고품질 프레임 가져오기
-        frame_data = camera.get_frame(higher_quality=True)
-        if frame_data:
-            return HttpResponse(frame_data, content_type='image/jpeg')
-        else:
-            # 빈 프레임 전송
-            empty_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-            cv2.putText(empty_frame, f"카메라 {camera_id}: 프레임 없음", 
-                       (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            _, jpeg = cv2.imencode('.jpg', empty_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-            return HttpResponse(jpeg.tobytes(), content_type='image/jpeg')
-            
-    except Exception as e:
-        # 오류 발생 시 오류 메시지와 함께 빈 프레임 반환
-        empty_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-        cv2.putText(empty_frame, f"오류: {str(e)}", 
-                   (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        _, jpeg = cv2.imencode('.jpg', empty_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        return HttpResponse(jpeg.tobytes(), content_type='image/jpeg')
-
 def generate_frames(camera):
     """최적화된 프레임 제너레이터 - FPS 제한 제거"""
     try:

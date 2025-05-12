@@ -371,7 +371,7 @@ def preview_guard_zone(request, camera_id):
             return HttpResponse(jpeg.tobytes(), content_type='image/jpeg')
             
         # 카메라 인스턴스 가져오기
-        from ..frame.video_camera import get_cached_camera
+        from .camera_views import get_cached_camera
         camera = get_cached_camera(camera_id)
         
         if camera is None:
