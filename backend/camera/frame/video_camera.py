@@ -7,6 +7,7 @@ import threading
 import logging
 import requests
 import json
+import queue
 from django.utils import timezone
 
 from ..yolo.detector import ObjectDetector
@@ -22,7 +23,7 @@ logger.addHandler(logging.NullHandler())
 logger.propagate = False
 
 class VideoCamera:
-    """카메라 스트림과 객체 감지 처리 - 성능 최적화"""
+    """카메라 스트림과 객체 감지 처리 - 동기식 처리 방식으로 변경"""
     
     def __init__(self, camera_number):
         # 문자열로 들어온 카메라 번호를 가능하면 숫자로 변환
@@ -34,20 +35,18 @@ class VideoCamera:
         self.stream_handler = None
         self._frame_count = 0
         self._last_results = None
-        self._last_processed_result = None
         self._last_db_update = time.time()
-        self._db_update_interval = 30  # 30초마다 DB 업데이트 (기존 5초에서 증가)
+        self._db_update_interval = 30  # 30초마다 DB 업데이트
         self._capture_timing_stats = []
         
         # 마지막 유효 프레임 저장 변수 초기화
         self._last_valid_frame = None
         self._last_frame_time = 0
-        self._frame_cache_time = 0.005  # 캐시 시간 5ms로 단축 (거의 항상 새 프레임 사용)
         self._processing_lock = threading.Lock()
         
-        # 객체 감지 처리 빈도 제한 (GPU 사용량 절감)
-        self._detection_interval = 0.1  # 10 FPS로 객체 감지 (0.1초마다 한 번)
+        # 객체 감지 간격 제어 변수 추가
         self._last_detection_time = 0
+        self._detection_interval = 0.033  
         
         # 추적 관련 변수 초기화
         self._tracking_enabled = False
@@ -84,7 +83,7 @@ class VideoCamera:
             self.db = db_adapter
             
             # 조류퇴치기 컨트롤러 초기화
-            self.bird_controller = BirdController()
+            self.bird_controller = BirdController.get_instance()
             
             # 성능 모니터링
             self.stats = {
@@ -94,7 +93,9 @@ class VideoCamera:
                 'avg_process_time': 0,
                 'total_process_time': 0,
                 'last_fps': 0,
-                'tracking_updates': 0  # 추적 업데이트 횟수 추가
+                'tracking_updates': 0,  # 추적 업데이트 횟수 추가
+                'batch_size': self.detector.batch_size if hasattr(self.detector, 'batch_size') else 1,  # 배치 크기 추가
+                'sync_mode': 'SYNC'  # 동기식 모드 표시
             }
             
             # 결과 처리 및 DB 업데이트를 위한 스레드 시작
@@ -102,48 +103,33 @@ class VideoCamera:
             self.processing_thread = threading.Thread(target=self._process_results_thread, daemon=True)
             self.processing_thread.start()
             
-            logger.info(f"카메라 {camera_number} 초기화 완료")
+            logger.info(f"카메라 {camera_number} 초기화 완료 (동기식 모드)")
             
         except Exception as e:
             logger.error(f"카메라 {camera_number} 초기화 오류: {e}")
             # 예외 발생해도 진행
     
     def _process_results_thread(self):
-        """감지 결과 처리 및 DB 업데이트를 위한 별도 스레드"""
+        """DB 업데이트를 위한 별도 스레드"""
+        check_interval = 1.0  # 1초마다 확인
         last_check_time = time.time()
-        check_interval = 1.0  # 1초마다 새 결과 확인 (기존 0.2초에서 증가)
         
         while self.is_running:
             try:
                 current_time = time.time()
                 
-                # 주기적으로 감지 결과 확인
+                # 주기적으로 DB 업데이트 필요성 확인
                 if current_time - last_check_time >= check_interval:
                     last_check_time = current_time
                     
-                    # 새 감지 결과 가져오기
-                    if self.stream_handler:
-                        # 카메라 ID를 문자열로 변환하여 일관성 유지
-                        camera_id_str = str(self.camera_number)
-                        result = self.detector.get_latest_result(camera_id_str)
-                        
-                        # 새 결과가 있으면 처리
-                        if result is not None and result != self._last_processed_result:
-                            self._last_results = result
-                            self._last_processed_result = result
-                            
-                            # 잠금 획득
-                            with self._processing_lock:
-                                # DB 업데이트 및 조류퇴치기 제어 (주기적으로)
-                                if current_time - self._last_db_update >= self._db_update_interval:
-                                    if hasattr(result, 'boxes') and hasattr(result, 'orig_shape'):
-                                        height, width = result.orig_shape
-                                        print(f"[ASYNC] 카메라 {camera_id_str}: DB 업데이트")
-                                        self._process_detection_results(result.boxes, width, height)
-                                        self._last_db_update = current_time
-                            
-                            # 통계 업데이트
-                            self.stats['detection_count'] += 1
+                    # DB 업데이트 (주기적으로)
+                    with self._processing_lock:
+                        if current_time - self._last_db_update >= self._db_update_interval:
+                            if self._last_results is not None and hasattr(self._last_results, 'boxes') and hasattr(self._last_results, 'orig_shape'):
+                                height, width = self._last_results.orig_shape
+                                print(f"[DB] 카메라 {self.camera_number}: DB 업데이트")
+                                self._process_detection_results(self._last_results.boxes, width, height)
+                                self._last_db_update = current_time
                 
                 # 짧게 대기
                 time.sleep(0.05)
@@ -153,7 +139,7 @@ class VideoCamera:
                 time.sleep(1)  # 오류 발생 시 1초 대기
     
     def get_frame(self, higher_quality=False):
-        """프레임 가져오기 - 동기식 객체 감지로 최적화된 버전"""
+        """프레임 가져오기 - 동기식 객체 감지로 변경된 버전"""
         try:
             # URL 변경 여부 확인 및 필요시 스트림 핸들러 재초기화
             current_url = self.camera_manager.get_camera_url(self.camera_number)
@@ -165,8 +151,8 @@ class VideoCamera:
                     self.stream_handler.stop()
                     # 스트림 핸들러가 완전히 정리될 시간 부여
                     time.sleep(0.2)
-                # 새 URL로 재초기화 (stream_url도 원본 URL을 사용)
-                self.stream_url = current_url  # self.camera_manager.create_stream_url() 사용하지 않음
+                # 새 URL로 재초기화
+                self.stream_url = current_url
                 self.stream_handler = StreamHandler(self.camera_number, self.stream_url)
                 # 마지막 유효 프레임 초기화
                 self._last_valid_frame = None
@@ -180,7 +166,7 @@ class VideoCamera:
             # 프로세스 시작 시간
             start_time = time.time()
             
-            # 프레임 가져오기 (raw 프레임, 비동기 감지 결과는 무시)
+            # 프레임 가져오기
             frame = self.stream_handler.get_frame_from_buffer()
             
             if frame is None:
@@ -190,78 +176,70 @@ class VideoCamera:
             self._last_valid_frame = frame
             self._last_frame_time = time.time()
             
-            # 카메라 ID를 문자열로 전달하여 가드존 필터링이 적용되도록 함
+            # 카메라 ID를 문자열로 전달
             camera_id_str = str(self.camera_number)
             
-            # 동기식으로 객체 감지 수행 (현재 프레임에 대해 직접 감지)
-            if self.detector and self.detector.model is not None:
-                # 프레임 크기 저장
-                height, width = frame.shape[:2]
+            # 객체 감지 수행 여부 결정 (일정 간격마다)
+            result = None
+            current_time = time.time()
+            
+            # 감지 간격이 경과했는지 확인
+            should_run_detection = (current_time - self._last_detection_time) >= self._detection_interval
+            
+            if should_run_detection:
+                # 프레임 복사본 생성 (원본을 변경하지 않기 위해)
+                detection_frame = frame.copy()
                 
-                # 가드존 시각화 (활성화된 경우)
-                has_guard_zone = (camera_id_str is not None and 
-                    camera_id_str in self.detector.guard_zones and 
-                    len(self.detector.guard_zones[camera_id_str]) > 0)
+                # 동기식 객체 감지 수행
+                result = self.detector.detect_objects(detection_frame, camera_id_str)
                 
-                is_enabled = self.detector.guard_zones_enabled.get(camera_id_str, False)
+                # 감지 결과 저장
+                if result is not None:
+                    self._last_results = result
+                    self.stats['detection_count'] += 1
                 
-                if has_guard_zone and is_enabled:
-                    # 가드존 시각화
-                    frame = self.detector._draw_guard_zones(frame, camera_id_str, width, height)
+                # 마지막 감지 시간 갱신
+                self._last_detection_time = current_time
                 
-                # 객체 감지 처리 빈도 제한 (GPU 사용량 절감)
+                # 감지 간격에 대한 로그 기록
+                logger.debug(f"객체 감지 수행 - 카메라 {camera_id_str}, 간격: {self._detection_interval}초")
+            else:
+                # 이전 결과 재사용
+                result = self._last_results
+            
+            # 감지 결과가 있으면 바운딩 박스 그리기
+            if result and hasattr(result, 'boxes') and hasattr(result.boxes, '__len__') and len(result.boxes) > 0:
+                try:
+                    # 바운딩 박스 그리기
+                    frame = draw_detections(frame, result, self.detector.model.names, detector=self.detector, camera_id=camera_id_str)
+                    
+                    # 추적 알고리즘에 감지 결과 전송 
+                    current_time = time.time()
+                    if current_time - self._last_tracking_update >= self._tracking_update_interval:
+                        self._send_detection_to_tracker(result.boxes, frame.shape[1], frame.shape[0])
+                        self._last_tracking_update = current_time
+                        
+                except Exception as e:
+                    logger.error(f"바운딩 박스 그리기 오류: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+            elif self._tracking_enabled:
+                # 객체가 없는 경우에도 빈 배열로 추적 업데이트
                 current_time = time.time()
-                if current_time - self._last_detection_time >= self._detection_interval:
-                    # 객체 감지 수행 - 안정성을 위해 복사본 사용
-                    # 프레임 데이터 변경 방지를 위한 복사 필요
-                    result = self.detector.detect_objects(frame.copy(), camera_id=camera_id_str)
-                    
-                    # 감지 결과가 있으면 바운딩 박스 그리기
-                    if result and hasattr(result, 'boxes') and hasattr(result.boxes, '__len__') and len(result.boxes) > 0:
-                        try:
-                            # print(f"카메라 {camera_id_str}: {len(result.boxes)}개 객체 감지됨")
-                            frame = draw_detections(frame, result, self.detector.model.names)
-                            
-                            # 감지 결과 저장 (DB 업데이트용)
-                            self._last_results = result
-                            
-                            # DB 업데이트는 비동기로 처리 (스레드가 처리할 수 있도록)
-                            with self._processing_lock:
-                                current_time = time.time()
-                                if current_time - self._last_db_update >= self._db_update_interval:
-                                    if hasattr(result, 'boxes') and hasattr(result, 'orig_shape'):
-                                        # 프레임 크기 저장
-                                        height, width = result.orig_shape
-                                        # DB 업데이트를 위한 결과 처리 직접 호출
-                                        self._process_detection_results(result.boxes, width, height)
-                                        self._last_db_update = current_time
-                            
-                            # 추적 알고리즘에 감지 결과 전송 
-                            current_time = time.time()
-                            if current_time - self._last_tracking_update >= self._tracking_update_interval:
-                                self._send_detection_to_tracker(result.boxes, width, height)
-                                self._last_tracking_update = current_time
-                            
-                        except Exception as e:
-                            logger.error(f"바운딩 박스 그리기 오류: {e}")
-                            import traceback
-                            logger.error(traceback.format_exc())
-                    elif self._tracking_enabled:
-                        # 객체가 없는 경우에도 빈 배열로 추적 업데이트 (객체 없음 상태를 알리기 위해)
-                        current_time = time.time()
-                        if current_time - self._last_tracking_update >= self._tracking_update_interval:
-                            self._send_detection_to_tracker([], width, height)
-                            self._last_tracking_update = current_time
-                    
-                    # 마지막 감지 시간 업데이트
-                    self._last_detection_time = current_time
-                elif self._last_results is not None:
-                    # 이전 감지 결과가 있으면 그것을 사용
-                    try:
-                        frame = draw_detections(frame, self._last_results, self.detector.model.names)
-                    except Exception as e:
-                        logger.error(f"이전 바운딩 박스 그리기 오류: {e}")
-                        pass
+                if current_time - self._last_tracking_update >= self._tracking_update_interval:
+                    self._send_detection_to_tracker([], frame.shape[1], frame.shape[0])
+                    self._last_tracking_update = current_time
+            
+            # 가드존 시각화 (별도 기능으로 처리)
+            has_guard_zone = (camera_id_str is not None and 
+                            camera_id_str in self.detector.guard_zones and 
+                            len(self.detector.guard_zones[camera_id_str]) > 0)
+            
+            is_enabled = self.detector.guard_zones_enabled.get(camera_id_str, False)
+            
+            if has_guard_zone and is_enabled:
+                # 가드존 시각화
+                frame = self.detector._draw_guard_zones(frame, camera_id_str, frame.shape[1], frame.shape[0])
             
             # 감지 FPS 표시
             if hasattr(self.detector, 'get_average_fps'):
@@ -282,7 +260,7 @@ class VideoCamera:
                 cv2.putText(
                     frame, 
                     tracking_text, 
-                    (10, 50),
+                    (10, 70),
                     cv2.FONT_HERSHEY_COMPLEX, 
                     0.4, 
                     (0, 0, 0),
@@ -304,7 +282,6 @@ class VideoCamera:
             self.stats['avg_process_time'] = self.stats['total_process_time'] / max(1, self.stats['frames_processed'])
             
             # JPEG 인코딩 - higher_quality 변수에 따라 품질 조정
-            # 썸네일(고품질) 또는 스트리밍(저품질) 여부에 따라 품질 조정
             quality = 92 if higher_quality else 80
             return self._encode_frame(frame, quality=quality)
             
@@ -435,10 +412,7 @@ class VideoCamera:
         
         # 감지된 객체가 있는지 확인
         if boxes is None or not hasattr(boxes, '__len__') or len(boxes) == 0:
-            # logger.info("감지된 객체 없음")
             return
-            
-        # logger.info(f"_process_detection_results 호출됨: {len(boxes)}개 객체 감지")
         
         # 가장 큰 객체 찾기
         best_box = self._find_largest_box(boxes, frame_width, frame_height)
@@ -470,7 +444,9 @@ class VideoCamera:
                             rtsp_address=self.rtsp_url or f"카메라 {camera_id}",
                             status="active",
                             installation_direction=f"방향 {camera_id}",
-                            viewing_angle=0
+                            viewing_angle=0,
+                            installation_height=0,
+                            wind_turbine_id=f"WT{camera_id}"
                         )
                         new_camera.save()
                         print(f"[DB_SAVE] 카메라 {camera_id} 정보가 DB에 자동 추가되었습니다.")
@@ -564,7 +540,6 @@ class VideoCamera:
             # 마지막 DB 업데이트 시간 갱신
             self._last_db_update = current_time
             self.stats['db_updates'] += 1
-            # print(f"[DB_SAVE] DB 업데이트 완료: {saved_box_count}개 객체 감지 정보 저장 (총 {len(boxes)}개 중)")
             
         except Exception as e:
             logger.error(f"DB 업데이트 오류: {e}")
@@ -603,6 +578,26 @@ class VideoCamera:
         
         return best_box
     
+    def set_detection_interval(self, interval_seconds):
+        """객체 감지 간격 설정 (초 단위)"""
+        try:
+            interval = float(interval_seconds)
+            if interval < 0.1:  # 최소 간격 0.1초
+                interval = 0.1
+            elif interval > 10.0:  # 최대 간격 10초
+                interval = 10.0
+                
+            self._detection_interval = interval
+            logger.info(f"카메라 {self.camera_number}: 객체 감지 간격이 {self._detection_interval}초로 설정됨")
+            return True
+        except Exception as e:
+            logger.error(f"객체 감지 간격 설정 오류: {e}")
+            return False
+
+    def get_detection_interval(self):
+        """현재 설정된 객체 감지 간격 반환 (초 단위)"""
+        return self._detection_interval
+
     def get_status(self):
         """카메라 상태 정보"""
         stream_status = {"state": "NOT_INITIALIZED"}
@@ -624,7 +619,10 @@ class VideoCamera:
                 "avg_process_time": self.stats['avg_process_time'],
                 "detection_count": self.stats['detection_count'],
                 "db_updates": self.stats['db_updates'],
-                "tracking_updates": self.stats['tracking_updates']
+                "tracking_updates": self.stats['tracking_updates'],
+                "batch_size": self.stats.get('batch_size', 1),
+                "mode": "SYNC",  # 동기식 모드 표시
+                "detection_interval": self._detection_interval  # 감지 간격 추가
             },
             "tracking": tracking_status
         }

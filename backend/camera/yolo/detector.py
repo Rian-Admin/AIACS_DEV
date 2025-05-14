@@ -58,8 +58,10 @@ class ObjectDetector:
             self.model_path = 'yolo12_27_best.pt'  # 상대 경로 사용
             
             try:
-                # 먼저 커스텀 모델 로드 시도
+                # 모델 로드
                 self.model = YOLO(self.model_path)
+                print("표준 모델 사용")
+                
             except Exception as custom_model_error:
                 print(f"커스텀 모델 로드 실패: {custom_model_error}")
                 pass
@@ -69,6 +71,16 @@ class ObjectDetector:
             
             # GPU 사용 가능 여부 확인
             self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            print(f"객체 감지에 {self.device} 사용")
+            
+            # 모델을 GPU로 이동 및 메모리 최적화
+            self.model.to(self.device)
+            # FP32 정밀도 사용
+            if self.device == 'cuda':
+                self.model = self.model.float()
+                
+            # 배치 처리 설정
+            self.batch_size = 4  # 기본 배치 크기
             
             # 성능 모니터링을 위한 변수들
             self.inference_times = []
@@ -114,178 +126,172 @@ class ObjectDetector:
     
     def _process_detection_queue(self):
         """큐에서 프레임을 가져와 객체 감지를 수행하는 스레드"""
+        batch_frames = []
+        batch_queue_items = []
+        last_batch_time = time.time()
+        batch_timeout = 0.05  # 50ms 또는 배치 크기 채우기 중 더 빠른 것
+        
         while self.is_running:
-            item_processed = False  # 아이템 처리 여부 추적
-            
             try:
-                # 큐에서 항목 가져오기 (우선순위, 순서, 카메라ID, 프레임, 콜백)
-                queue_item = self.detection_queue.get(timeout=0.1)
+                current_time = time.time()
                 
+                # 배치 처리를 위한 항목 수집
                 try:
-                    # 항목 처리 로직
-                    if queue_item is None:
-                        # None 항목 무시
-                        print("큐에서 None 항목을 받았습니다.")
-                    elif not isinstance(queue_item, QueueItem):
-                        # 잘못된 형식의 항목 무시
-                        print(f"잘못된 큐 항목 형식: {type(queue_item)}")
-                    else:
-                        # QueueItem에서 값 추출
+                    # 큐에서 항목 가져오기 (짧은 대기 시간)
+                    queue_item = self.detection_queue.get(timeout=0.01)
+                    
+                    # 유효한 항목이면 배치에 추가
+                    if queue_item is not None and isinstance(queue_item, QueueItem):
                         camera_id = queue_item.camera_id
                         frame = queue_item.frame
-                        callback = queue_item.callback
                         
                         # 프레임 유효성 검사
-                        if frame is None:
-                            print(f"프레임이 None입니다: 카메라 {camera_id}")
-                        elif not isinstance(frame, np.ndarray):
-                            print(f"유효하지 않은 프레임 타입: {type(frame)}, 카메라 {camera_id}")
-                        else:
-                            # 객체 감지 수행
-                            result = self._detect_objects_internal(frame, camera_id)
-                            
-                            # 결과 저장
-                            with self.result_lock:
-                                self.result_dict[camera_id] = result
-                            
-                            # 콜백 실행 (있는 경우)
-                            if callback is not None:
-                                try:
-                                    callback(result)
-                                except Exception as callback_err:
-                                    print(f"콜백 실행 오류: {callback_err}")
+                        if frame is not None and isinstance(frame, np.ndarray):
+                            # RGB로 변환 (YOLO는 RGB 입력 예상)
+                            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            batch_frames.append(rgb_frame)
+                            batch_queue_items.append(queue_item)
+                    
+                    # 항목이 처리됨 표시
+                    self.detection_queue.task_done()
+                    
+                except queue.Empty:
+                    # 큐가 비었을 때 처리
+                    pass
+                
+                # 배치 처리 조건: 
+                # 1) 배치가 최대 크기에 도달하거나
+                # 2) 타임아웃 초과 및 배치에 항목이 있는 경우
+                time_since_last_batch = current_time - last_batch_time
+                if (len(batch_frames) >= self.batch_size or 
+                    (len(batch_frames) > 0 and time_since_last_batch >= batch_timeout)):
+                    
+                    # 배치 처리 시작
+                    if batch_frames:
+                        # 배치 생성 시간 기록
+                        last_batch_time = time.time()
+                        
+                        try:
+                            # 배치 처리 (GPU 메모리 최적화)
+                            with torch.no_grad():  # 그래디언트 계산 비활성화로 메모리 절약
+                                # 배치 처리
+                                results = self.model(batch_frames, conf=self.conf_threshold, verbose=False)
+                                
+                                # 추론 시간 기록
+                                inference_time = (time.time() - last_batch_time) * 1000  # 밀리초 단위
+                                self.inference_times.append(inference_time)
+                                if len(self.inference_times) > 100:  # 최대 100개의 샘플만 유지
+                                    self.inference_times.pop(0)
+                                
+                                # 처리된 프레임 수 증가
+                                self.total_processed += len(batch_frames)
+                                
+                                # 결과 처리 및 콜백 호출
+                                for idx, (queue_item, result) in enumerate(zip(batch_queue_items, results)):
+                                    camera_id = queue_item.camera_id
+                                    callback = queue_item.callback
                                     
-                    # 항목이 정상적으로 처리됨 표시
-                    item_processed = True
-                    
-                except Exception as process_err:
-                    # 항목 처리 중 발생한 오류 기록
-                    import traceback
-                    print(f"항목 처리 중 오류: {process_err}")
-                    print(traceback.format_exc())
-                    
-                    # 오류가 발생해도 항목은 처리된 것으로 간주
-                    item_processed = True
+                                    # 가드존 필터링 적용
+                                    filtered_result = self._apply_guard_zone_filter(camera_id, result)
+                                    
+                                    # 결과 저장
+                                    with self.result_lock:
+                                        self.result_dict[camera_id] = filtered_result
+                                    
+                                    # 콜백 실행 (있는 경우)
+                                    if callback is not None:
+                                        try:
+                                            callback(filtered_result)
+                                        except Exception as callback_err:
+                                            print(f"콜백 실행 오류: {callback_err}")
+                            
+                            # 배치 처리 후 정리
+                            batch_frames.clear()
+                            batch_queue_items.clear()
+                            
+                            # 메모리 정리 (주기적으로)
+                            if self.total_processed % 100 == 0:
+                                torch.cuda.empty_cache()
+                                
+                        except Exception as batch_err:
+                            print(f"배치 처리 오류: {batch_err}")
+                            import traceback
+                            print(traceback.format_exc())
+                            
+                            # 오류 발생 시 배치 비우기
+                            batch_frames.clear()
+                            batch_queue_items.clear()
                 
-                finally:
-                    # 항목이 처리됐으면 task_done() 호출 (한 번만 호출됨)
-                    if item_processed:
-                        self.detection_queue.task_done()
-                
-            except queue.Empty:
-                # 큐가 비어 있으면 잠시 대기
-                time.sleep(0.01)
+                # 짧은 대기 (CPU 과부하 방지)
+                if not batch_frames:  # 처리할 배치가 없을 때만 대기
+                    time.sleep(0.001)
+                    
             except Exception as e:
                 import traceback
                 print(f"큐 처리 주요 오류: {e}")
                 print(traceback.format_exc())
-                
-                # 오류 후 잠시 대기
-                time.sleep(0.1)
+                time.sleep(0.1)  # 오류 발생 시 잠시 대기
     
-    def _detect_objects_internal(self, frame, camera_id=None):
-        """내부적으로 사용되는 객체 감지 메서드"""
-        if frame is None or self.model is None:
-            return None
+    def _apply_guard_zone_filter(self, camera_id, result):
+        """가드존 필터링 적용"""
+        if camera_id is None or not hasattr(result, 'boxes'):
+            return result
+        
+        # 카메라 ID를 문자열로 변환
+        camera_id_str = str(camera_id)
+        
+        # 해당 카메라에 가드존이 설정되어 있고 활성화 되어 있는지 확인
+        has_guard_zone = (camera_id_str in self.guard_zones and 
+                         len(self.guard_zones[camera_id_str]) > 0)
+        is_enabled = (self.guard_zone_enabled.get(camera_id_str, False) or 
+                     self.guard_zones_enabled.get(camera_id_str, False))
+        
+        # 가드존이 활성화되어 있으면 필터링 적용
+        if has_guard_zone and is_enabled and hasattr(result, 'boxes') and len(result.boxes) > 0:
+            # 원본 이미지 크기 가져오기
+            original_height, original_width = result.orig_shape if hasattr(result, 'orig_shape') else (None, None)
             
-        try:
-            # 프레임 크기 저장
-            original_height, original_width = frame.shape[:2] 
-            
-            # 시작 시간 기록
-            start_time = time.time()
-            
-            # YOLO 모델 실행 - conf 임계값 적용
-            results = self.model(frame, conf=self.conf_threshold, verbose=False)
-            
-            # 추론 시간 기록
-            inference_time = (time.time() - start_time) * 1000  # 밀리초 단위
-            self.inference_times.append(inference_time)
-            if len(self.inference_times) > 100:  # 최대 100개의 샘플만 유지
-                self.inference_times.pop(0)
+            if original_height is None or original_width is None:
+                return result  # 치수 정보가 없으면 필터링 불가
                 
-            # 처리된 프레임 수 증가
-            self.total_processed += 1
+            filtered_boxes = []
+            guard_zones = self.guard_zones[camera_id_str]
             
-            # results는 리스트
-            if isinstance(results, list) and len(results) > 0:
-                result = results[0]  # 첫 번째 결과 사용
-                
-                # orig_shape 속성 추가
-                if not hasattr(result, 'orig_shape'):
-                    result.orig_shape = (original_height, original_width)
-                
-                # 가드존 필터링 적용
-                if camera_id is not None and hasattr(result, 'boxes') and len(result.boxes) > 0:
-                    # 카메라 ID를 문자열로 변환
-                    camera_id_str = str(camera_id)
+            # 각 바운딩 박스에 대해 하나 이상의 가드존 내에 있는지 확인
+            for box in result.boxes:
+                if box.xyxy is None or len(box.xyxy) == 0:
+                    continue
                     
-                    # 해당 카메라에 가드존이 설정되어 있고 활성화 되어 있는지 확인
-                    has_guard_zone = (camera_id_str in self.guard_zones and 
-                                     len(self.guard_zones[camera_id_str]) > 0)
-                    is_enabled = self.guard_zone_enabled.get(camera_id_str, False) or self.guard_zones_enabled.get(camera_id_str, False)
+                # 박스 좌표 가져오기
+                xyxy = box.xyxy[0].cpu().numpy()
+                x1, y1, x2, y2 = map(float, xyxy)
+                
+                # 박스 중심점 계산
+                center_x = (x1 + x2) / 2 / original_width
+                center_y = (y1 + y2) / 2 / original_height
+                
+                # 하나 이상의 가드존 내에 있는지 확인
+                is_in_guard_zone = False
+                for zone in guard_zones:
+                    zone_x = zone['x']
+                    zone_y = zone['y']
+                    zone_width = zone['width']
+                    zone_height = zone['height']
                     
-                    # 가드존이 활성화되어 있으면 필터링 적용
-                    if has_guard_zone and is_enabled:
-                        filtered_boxes = []
-                        guard_zones = self.guard_zones[camera_id_str]
-                        
-                        # 각 바운딩 박스에 대해 하나 이상의 가드존 내에 있는지 확인
-                        for box in result.boxes:
-                            if box.xyxy is None or len(box.xyxy) == 0:
-                                continue
-                                
-                            # 박스 좌표 가져오기
-                            xyxy = box.xyxy[0].cpu().numpy()
-                            x1, y1, x2, y2 = map(float, xyxy)
-                            
-                            # 박스 중심점 계산
-                            center_x = (x1 + x2) / 2 / original_width
-                            center_y = (y1 + y2) / 2 / original_height
-                            
-                            # 하나 이상의 가드존 내에 있는지 확인
-                            is_in_guard_zone = False
-                            for zone in guard_zones:
-                                zone_x = zone['x']
-                                zone_y = zone['y']
-                                zone_width = zone['width']
-                                zone_height = zone['height']
-                                
-                                # 중심점이 가드존 내에 있는지 확인
-                                if (zone_x <= center_x <= zone_x + zone_width and 
-                                    zone_y <= center_y <= zone_y + zone_height):
-                                    is_in_guard_zone = True
-                                    break
-                            
-                            # 가드존 내에 있으면 결과에 포함
-                            if is_in_guard_zone:
-                                filtered_boxes.append(box)
-                        
-                        # 필터링된 박스로 결과 업데이트
-                        result.boxes = filtered_boxes
+                    # 중심점이 가드존 내에 있는지 확인
+                    if (zone_x <= center_x <= zone_x + zone_width and 
+                        zone_y <= center_y <= zone_y + zone_height):
+                        is_in_guard_zone = True
+                        break
                 
-                # 감지된 객체 수 처리
-                if hasattr(result, 'boxes') and len(result.boxes) > 0:
-                    boxes_count = len(result.boxes)
-                    
-                    # 클래스별 객체 수 카운트
-                    if hasattr(self.model, 'names'):
-                        class_counts = {}
-                        for box in result.boxes:
-                            if hasattr(box, 'cls') and box.cls is not None and len(box.cls) > 0:
-                                cls_id = int(box.cls[0].item())
-                                class_name = self.model.names.get(cls_id, f"class_{cls_id}")
-                                class_counts[class_name] = class_counts.get(class_name, 0) + 1
-                
-                return result
-            else:
-                return None
-                
-        except Exception as e:
-            import traceback
-            print(f"내부 객체 감지 오류: {e}")
-            print(traceback.format_exc())
-            return None
+                # 가드존 내에 있으면 결과에 포함
+                if is_in_guard_zone:
+                    filtered_boxes.append(box)
+            
+            # 필터링된 박스로 결과 업데이트
+            result.boxes = filtered_boxes
+            
+        return result
     
     def detect_objects_async(self, camera_id, frame, priority=10, callback=None):
         """비동기 객체 감지 요청
@@ -362,7 +368,60 @@ class ObjectDetector:
 
     def detect_objects(self, frame, camera_id=None):
         """동기식 객체 감지 (하위 호환성 유지)"""
-        return self._detect_objects_internal(frame, camera_id)
+        if not self.is_running or self.model is None or frame is None:
+            return None
+            
+        try:
+            # 프레임 크기 저장
+            original_height, original_width = frame.shape[:2] 
+            
+            # 시작 시간 기록
+            start_time = time.time()
+            
+            # 배치 처리 최적화 - 단일 프레임도 배치로 처리
+            # 프레임을 RGB로 변환 (YOLO는 RGB 입력 예상)
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # torch.no_grad() 컨텍스트에서 실행하여 메모리 사용량 감소
+            with torch.no_grad():
+                # 모델 실행 - conf 임계값 적용
+                results = self.model(rgb_frame, conf=self.conf_threshold, verbose=False)
+                
+                # 추론 시간 기록
+                inference_time = (time.time() - start_time) * 1000  # 밀리초 단위
+                self.inference_times.append(inference_time)
+                if len(self.inference_times) > 100:  # 최대 100개의 샘플만 유지
+                    self.inference_times.pop(0)
+                    
+                # 처리된 프레임 수 증가
+                self.total_processed += 1
+                
+                # results는 리스트
+                if isinstance(results, list) and len(results) > 0:
+                    result = results[0]  # 첫 번째 결과 사용
+                    
+                    # orig_shape 속성 추가
+                    if not hasattr(result, 'orig_shape'):
+                        result.orig_shape = (original_height, original_width)
+                    
+                    # 가드존 필터링 적용
+                    if camera_id is not None:
+                        result = self._apply_guard_zone_filter(camera_id, result)
+                    
+                    # 처리된 결과 저장
+                    if camera_id is not None:
+                        with self.result_lock:
+                            self.result_dict[str(camera_id)] = result
+                    
+                    return result
+                else:
+                    return None
+                    
+        except Exception as e:
+            import traceback
+            print(f"내부 객체 감지 오류: {e}")
+            print(traceback.format_exc())
+            return None
     
     def get_average_fps(self):
         """평균 FPS 계산"""
@@ -388,8 +447,10 @@ class ObjectDetector:
             "avg_inference_time": avg_inference_time,
             "conf_threshold": self.conf_threshold,
             "total_processed": self.total_processed,
-            "queue_size": self.detection_queue.qsize(),
-            "async_mode": True
+            "queue_size": self.detection_queue.qsize() if hasattr(self.detection_queue, 'qsize') else 0,
+            "async_mode": True,
+            "half_precision": False,
+            "batch_size": self.batch_size
         }
         
     def stop(self):
@@ -407,25 +468,64 @@ class ObjectDetector:
             # 처리 중인 큐 비우기
             with self.result_lock:
                 # 큐에 남아 있는 작업 비우기
+                while not self.detection_queue.empty():
+                    try:
+                        self.detection_queue.get_nowait()
+                        self.detection_queue.task_done()
+                    except queue.Empty:
+                        break
+                        
                 self.result_dict = {}
                 self.inference_times = []
                 self.total_processed = 0
             
             # 새 모델 로드
+            device = self.device
             new_model = YOLO(model_path)
             
-            # 모델 교체
+            # 모델 변경 전 처리 일시 중지
+            old_running_state = self.is_running
+            self.is_running = False
+            
+            # 이전 모델과 스레드 정리를 위한 짧은 대기
+            time.sleep(0.1)
+            
+            # 새 모델 설정
             self.model = new_model
             self.model_path = model_path
             
+            # GPU로 모델 이동
+            self.model.to(device)
+            
+            # GPU에서 FP32 정밀도 사용
+            if device == 'cuda':
+                self.model = self.model.float()
+            
+            # 처리 재개
+            self.is_running = old_running_state
+            
+            # 스레드가 종료되었다면 재시작
+            if not hasattr(self, 'detection_thread') or not self.detection_thread.is_alive():
+                self.detection_thread = Thread(target=self._process_detection_queue, daemon=True)
+                self.detection_thread.start()
+            
             # 추론 시간 통계 초기화
             self.inference_times = []
+            
+            # 메모리 캐시 정리
+            torch.cuda.empty_cache()
             
             return True
             
         except Exception as e:
             # 오류 발생 시 원래 모델 유지
             print(f"새 모델 로드 중 오류 발생: {e}")
+            import traceback
+            print(traceback.format_exc())
+            
+            # 처리 재개 (오류 발생해도)
+            self.is_running = True
+            
             raise
 
     def set_guard_zone(self, camera_id, guard_zones, enabled=True):
@@ -518,3 +618,23 @@ class ObjectDetector:
             print(f"Guard Zone 시각화 오류: {e}")
             print(traceback.format_exc())
             return frame  # 오류 발생 시 원본 프레임 반환
+    
+    # 추가: 배치 크기 설정 메서드
+    def set_batch_size(self, batch_size):
+        """객체 감지 배치 크기 설정
+        
+        Args:
+            batch_size: 배치 크기 (1 이상의 정수)
+            
+        Returns:
+            bool: 설정 성공 여부
+        """
+        try:
+            if batch_size >= 1:
+                self.batch_size = int(batch_size)
+                print(f"배치 크기 설정: {self.batch_size}")
+                return True
+            return False
+        except Exception as e:
+            print(f"배치 크기 설정 오류: {e}")
+            return False

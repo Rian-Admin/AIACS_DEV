@@ -4,7 +4,7 @@ import time
 import numpy as np
 import os  # 환경 변수 설정을 위해 추가
 from collections import deque
-from ..yolo.detector import ObjectDetector
+import queue
 
 class StreamHandler:
     def __init__(self, camera_number, url):
@@ -15,7 +15,7 @@ class StreamHandler:
         self.thread = None
         
         # 버퍼 크기 축소
-        self.frame_buffer = deque(maxlen=10)  # 최대 2개 프레임만 유지 (지연 더 감소)
+        self.frame_buffer = deque(maxlen=4)  # 최대 4개 프레임만 유지 (지연 더 감소)
         
         # 연결 재시도 설정 - 강화된 재연결 시스템
         self.max_retries = 20  # 재시도 횟수 증가
@@ -29,19 +29,19 @@ class StreamHandler:
         # 비디오 파일 여부 확인
         self.is_video_file = self._is_video_file(url)
         self.is_rtsp = url.lower().startswith('rtsp://')
-        self.video_fps = 10  # 비디오 파일의 기본 FPS
+        self.video_fps = 30  # 비디오 파일의 기본 FPS
         self.last_frame_time = 0  # 마지막 프레임 시간
         
-        # RTSP 스트림인 경우 저지연 모드를 위한 환경 변수 설정
+        # RTSP 스트림인 경우 하드웨어 가속을 위한 설정
         if self.is_rtsp:
-            # 간결한 RTSP 설정으로 변경 - TCP로 변경하여 안정성 개선
+            # TCP 전송으로 변경하여 안정성 개선
             os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
-            # URL에 쿼리 파라미터(chnid 등)가 있는지 확인하고 출력
-            if '?' in url:
-                print(f"카메라 {camera_number}: 쿼리 파라미터 포함된 RTSP URL 사용 - {url}")
+            
+            # GStreamer 관련 코드 제거 - 항상 표준 방식 사용
+            self.use_gstreamer = False
         
-        # 마지막 감지 결과 (동기식 모드로 전환하더라도 호환성을 위해 유지)
-        self.last_detection_result = None
+        # 처리 결과 큐
+        self.result_queue = queue.Queue(maxsize=10)
         
         # 초기화 즉시 스트림 시작
         self.start()
@@ -67,7 +67,7 @@ class StreamHandler:
         self.thread.start()
     
     def init_capture(self):
-        """비디오 캡처 초기화 - 강화된 안정성"""
+        """비디오 캡처 초기화 - 하드웨어 가속 추가"""
         try:
             # 카메라 매니저에서 최신 URL 확인
             try:
@@ -97,13 +97,12 @@ class StreamHandler:
                 print(f"카메라 {self.camera_number}: 연속 {self.consecutive_failures}회 실패, 대기 시간 {cooldown}초")
                 time.sleep(cooldown - 3)  # 기본 재시도 간격 3초 고려
             
-            # RTSP 스트림인 경우 적절한 백엔드와 옵션 사용
+            # RTSP 스트림인 경우 GStreamer 파이프라인 사용 부분 제거
             if self.is_rtsp:
-                print(f"카메라 {self.camera_number}: RTSP 스트림 초기화 - {self.url}")
-                # FFmpeg 백엔드 강제 사용
+                # 항상 표준 방식 사용
                 self.cap = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG)
             else:
-                # 일반 캡처 초기화
+                # 표준 캡처 초기화
                 self.cap = cv2.VideoCapture(self.url)
             
             # 캡처 설정 최적화
@@ -117,18 +116,12 @@ class StreamHandler:
                 # RTSP 스트림인 경우 최적화 설정
                 if self.is_rtsp:
                     # 버퍼 크기 최소화 (지연 감소)
-                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
-                    # H264 코덱 명시적 지정
-                    self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'H264'))
+                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                     # FPS 설정 - 30FPS로 개선
                     self.cap.set(cv2.CAP_PROP_FPS, 30)
                 else:
                     # 비RTSP 스트림/파일에 대한 설정
-                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
-                    try:
-                        self.cap.set(cv2.CAP_PROP_HW_ACCELERATION, 1)  # 하드웨어 가속 활성화
-                    except:
-                        pass
+                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
                 
                 # 성공 시 재설정
                 self.current_retry = 0
@@ -170,7 +163,7 @@ class StreamHandler:
     
     def _is_frame_valid(self, frame):
         """프레임이 유효한지 검사 - 최소한의 검사만 수행"""
-        # 기본적인 NULL 및 빈 프레임 검사만 수행
+        # 기본적인 NULL 및 빈 프레임 검사
         if frame is None or frame.size == 0:
             return False
         return True
@@ -178,10 +171,10 @@ class StreamHandler:
     def _capture_frames(self):
         """프레임 캡처 스레드 - 성능 최적화 및 강화된 재연결"""
         empty_frame_count = 0
-        frame_interval = 0.033  # 100 FPS 가능 (더 부드러운 재생)
+        frame_interval = 0.01  # 최대 100 FPS (더 부드러운 재생)
         last_frame_time = time.time()
         connection_monitor_time = time.time()  # 연결 모니터링 타이머
-        connection_check_interval = 60  # 60초마다 연결 상태 확인 (기존 10초에서 변경)
+        connection_check_interval = 60  # 60초마다 연결 상태 확인
         
         while self.is_running:
             current_time = time.time()
@@ -269,7 +262,7 @@ class StreamHandler:
                 self._add_empty_frame_to_buffer("프레임 없음")
                 continue
             
-            # 정상 프레임 처리 - 유효성 검사 간소화
+            # 정상 프레임 처리
             empty_frame_count = 0
             
             # 연결 상태 업데이트
@@ -278,7 +271,20 @@ class StreamHandler:
                 print(f"카메라 {self.camera_number}: 스트림 복구됨")
             
             # 버퍼에 프레임 추가 (순환 버퍼이므로 자동으로 오래된 것 제거)
-            self.frame_buffer.append(frame.copy())  # 깊은 복사로 프레임 보존
+            # 품질 유지를 위해 원본 프레임의 깊은 복사 수행
+            self.frame_buffer.append(frame.copy())
+            
+            # 탐지 결과 있는 경우 저장 (객체 감지 결과가 있을 때 추가됨)
+            if not self.result_queue.full():
+                try:
+                    # 프레임만 저장 (탐지 결과는 외부에서 추가)
+                    last_result = {
+                        'frame': frame.copy(),
+                        'timestamp': time.time()
+                    }
+                    self.result_queue.put_nowait(last_result)
+                except queue.Full:
+                    pass  # 큐가 가득 차면 건너뜀
             
             # 짧은 대기 (CPU 사용량 제한)
             time.sleep(0.001)
@@ -304,16 +310,38 @@ class StreamHandler:
         # 버퍼에 추가
         self.frame_buffer.append(empty_frame)
     
+    def add_detection_result(self, result):
+        """객체 감지 결과 추가 (외부에서 호출)"""
+        try:
+            # 결과 큐가 가득 차면 이전 항목 제거
+            if self.result_queue.full():
+                try:
+                    self.result_queue.get_nowait()
+                except queue.Empty:
+                    pass
+            
+            # 새 결과 추가
+            self.result_queue.put_nowait(result)
+        except Exception as e:
+            print(f"감지 결과 추가 오류: {e}")
+    
     def get_frame_with_detections(self):
-        """이전 버전과의 호환성을 위해 유지됨 - 단순히 프레임만 반환"""
+        """이전 버전과의 호환성을 위해 유지됨 - 최신 프레임과 감지 결과 반환"""
         try:
             # 최신 프레임 가져오기
             frame = self.get_frame_from_buffer()
             if frame is None:
                 return None, None
             
-            # 비동기 감지 없이 프레임만 반환
-            return frame, None
+            # 최신 감지 결과 가져오기 (논블로킹)
+            latest_result = None
+            try:
+                if not self.result_queue.empty():
+                    latest_result = self.result_queue.get_nowait()
+            except queue.Empty:
+                pass
+            
+            return frame, latest_result
         
         except Exception as e:
             import traceback
@@ -336,7 +364,19 @@ class StreamHandler:
     
     def get_latest_detection(self):
         """최신 감지 결과 반환"""
-        return self.last_detection_result
+        try:
+            # 논블로킹으로 최신 결과 가져오기
+            latest_result = None
+            try:
+                while not self.result_queue.empty():
+                    latest_result = self.result_queue.get_nowait()
+            except queue.Empty:
+                pass
+            
+            return latest_result
+        except Exception as e:
+            print(f"최신 감지 결과 가져오기 오류: {e}")
+            return None
     
     def get_connection_state(self):
         """현재 연결 상태 반환"""
@@ -391,3 +431,10 @@ class StreamHandler:
         
         # 버퍼 비우기
         self.frame_buffer.clear()
+        
+        # 결과 큐 비우기
+        while not self.result_queue.empty():
+            try:
+                self.result_queue.get_nowait()
+            except queue.Empty:
+                break
