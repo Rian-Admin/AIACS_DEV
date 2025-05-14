@@ -40,8 +40,6 @@ const Topbar = ({
       
       if (language === 'ko') {
         setCurrentDate(`${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`);
-      } else if (language === 'id') {
-        setCurrentDate(`${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`);
       } else {
         setCurrentDate(`${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`);
       }
@@ -120,7 +118,7 @@ const Topbar = ({
             fontSize: '0.8rem'
           }}
         >
-          {language === 'ko' ? '한국어' : language === 'en' ? 'English' : 'Bahasa Indonesia'}
+          {language === 'ko' ? '한국어' : 'English'}
         </Button>
         <Menu
           anchorEl={languageAnchorEl}
@@ -146,12 +144,6 @@ const Topbar = ({
             selected={language === 'en'}
           >
             English
-          </MenuItem>
-          <MenuItem 
-            onClick={() => handleLanguageChange('id')}
-            selected={language === 'id'}
-          >
-            Bahasa Indonesia
           </MenuItem>
         </Menu>
 

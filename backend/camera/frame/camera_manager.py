@@ -7,7 +7,7 @@ from typing import Dict, Optional, Union, Any
 from django.core.cache import cache
 from django.conf import settings
 
-# 로그 비활성화
+# 로그 설정
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 logger.propagate = False
@@ -16,6 +16,15 @@ class CameraManager:
     # 싱글톤 인스턴스
     _instance = None
     _instance_lock = threading.Lock()
+    
+    # 카메라 초기화를 위한 락 딕셔너리
+    _camera_locks = {}
+    # 초기화 상태 추적
+    _initialization_status = {}
+    # 전역 초기화 락
+    _global_init_lock = threading.Lock()
+    # 현재 초기화 중인 카메라 ID 목록
+    _cameras_initializing = set()
     
     @classmethod
     def get_instance(cls):
@@ -31,13 +40,13 @@ class CameraManager:
             return
             
         # RTSP 전송 프로토콜 설정 - 최소 옵션만 사용
-        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
         
         # 카메라 URL 캐시
         self._url_cache = {}
-        self._cache_timeout = 1  # 캐시 만료 시간 (초) - 1초로 단축
+        self._cache_timeout = 3  # 캐시 만료 시간 (초) - 3초로 설정
         self._last_db_check = 0
-        self._db_refresh_interval = 5  # DB 체크 간격 (초) - 1초로 더 단축
+        self._db_refresh_interval = 10  # DB 체크 간격 (초) - 10초로 설정
         
         # Django의 Camera 모델에서 카메라 정보 초기 로드
         self._load_cameras_from_db()
@@ -49,14 +58,14 @@ class CameraManager:
         logger.info(f"카메라 매니저 초기화 완료, 캐시 상태: {self._url_cache}")
         
         # 성능 및 오류 관련 설정
-        self.connection_timeout = 15  # 연결 타임아웃 시간 (초) 증가
-        self.reconnect_attempts = 5   # 재연결 시도 횟수 증가
+        self.connection_timeout = 15  # 연결 타임아웃 시간 (초)
+        self.reconnect_attempts = 5   # 재연결 시도 횟수
         
         # 카메라 연결 상태 추적
         self._camera_status = {}  # 카메라 ID를 키로, 상태를 값으로 저장
         
-        # 시스템 시작 시 모든 카메라 초기화
-        self._initialize_all_cameras()
+        # 시스템 시작 시 모든 카메라 초기화 (스레드로 실행)
+        threading.Thread(target=self._initialize_all_cameras_thread, daemon=True).start()
         
         # 카메라 모니터링 스레드 시작
         self._monitor_stop_event = threading.Event()
@@ -64,107 +73,115 @@ class CameraManager:
         self._monitor_thread.start()
         logger.info("카메라 모니터링 스레드가 시작되었습니다.")
     
+    def _initialize_all_cameras_thread(self):
+        """별도 스레드에서 모든 카메라를 초기화합니다."""
+        time.sleep(2)  # 시스템 시작 후 잠시 대기
+        self._initialize_all_cameras()
+    
     def _initialize_all_cameras(self):
-        """시스템 시작 시 모든 카메라를 강제로 초기화합니다."""
-        try:
+        """시스템 시작 시 모든 카메라를 순차적으로 초기화합니다."""
+        # 이미 초기화 중인지 확인
+        with self._global_init_lock:
+            if self._cameras_initializing:
+                logger.info(f"이미 카메라 초기화가 진행 중입니다: {self._cameras_initializing}")
+                return
+            
             logger.info("모든 카메라 초기화 시작...")
             
-            # 캐시된 모든 카메라 URL 확인
-            for camera_id, url in self._url_cache.items():
-                if not url:
+            # 카메라 목록 가져오기
+            camera_ids = list(self._url_cache.keys())
+            
+            for camera_id in camera_ids:
+                # 이미 성공적으로 초기화되었는지 확인
+                if self._camera_status.get(camera_id, "") == "online":
+                    logger.info(f"카메라 {camera_id}는 이미 초기화되어 있습니다.")
                     continue
-                    
-                logger.info(f"카메라 {camera_id} 초기화 시도 중...")
-                # 각 카메라 연결 테스트
-                cap = self.get_optimized_capture(camera_id)
-                if cap:
-                    # 성공적으로 연결된 경우
-                    ret, frame = cap.read()
-                    if ret and frame is not None:
-                        logger.info(f"카메라 {camera_id} 초기화 성공")
-                        self._camera_status[camera_id] = "online"
-                    else:
-                        logger.warning(f"카메라 {camera_id} 연결됐으나 프레임을 읽을 수 없음")
-                        self._camera_status[camera_id] = "error"
-                    cap.release()
-                else:
-                    logger.warning(f"카메라 {camera_id} 초기화 실패")
-                    self._camera_status[camera_id] = "offline"
+                
+                # 하나씩 순차적으로 초기화 (병렬 초기화 방지)
+                self._initialize_camera(camera_id)
+                
+                # 카메라 간 초기화 딜레이 (과부하 방지)
+                time.sleep(1.0)
             
             logger.info("모든 카메라 초기화 완료")
+    
+    def _initialize_camera(self, camera_id):
+        """단일 카메라를 초기화하는 메서드"""
+        # 카메라별 락 생성
+        if camera_id not in self._camera_locks:
+            with self._global_init_lock:
+                if camera_id not in self._camera_locks:
+                    self._camera_locks[camera_id] = threading.Lock()
+        
+        # 이미 초기화 중인지 확인
+        with self._global_init_lock:
+            if camera_id in self._cameras_initializing:
+                logger.info(f"카메라 {camera_id}는 이미 초기화 중입니다.")
+                return False
+            
+            # 초기화 시작 표시
+            self._cameras_initializing.add(camera_id)
+        
+        try:
+            # URL 가져오기
+            url = self._url_cache.get(camera_id)
+            if not url:
+                logger.warning(f"카메라 {camera_id}의 URL을 찾을 수 없습니다.")
+                return False
+            
+            logger.info(f"카메라 {camera_id} 초기화 중...")
+            
+            if url and "?" in url:
+                logger.info(f"카메라 {camera_id}: 쿼리 파라미터 포함된 RTSP URL 사용 - {url}")
+            
+            logger.info(f"카메라 {camera_id}: RTSP 스트림 초기화 - {url}")
+            
+            # 카메라 연결 테스트
+            cap = self.get_optimized_capture(camera_id)
+            success = False
+            
+            if cap:
+                # 성공적으로 연결된 경우 프레임 읽기 시도
+                ret, frame = cap.read()
+                if ret and frame is not None:
+                    success = True
+                    self._camera_status[camera_id] = "online"
+                    logger.info(f"카메라 {camera_id} 초기화 완료: {url}")
+                    logger.info(f"카메라 {camera_id} 초기화 성공")
+                else:
+                    self._camera_status[camera_id] = "error"
+                    logger.warning(f"카메라 {camera_id} 연결됐으나 프레임을 읽을 수 없음")
+                
+                # 리소스 해제
+                cap.release()
+            else:
+                self._camera_status[camera_id] = "offline"
+                logger.warning(f"카메라 {camera_id} 초기화 실패")
+            
+            return success
             
         except Exception as e:
-            logger.error(f"카메라 초기화 중 오류 발생: {e}")
+            logger.error(f"카메라 {camera_id} 초기화 중 오류 발생: {e}")
+            self._camera_status[camera_id] = "error"
+            return False
+        finally:
+            # 초기화 완료 표시
+            with self._global_init_lock:
+                if camera_id in self._cameras_initializing:
+                    self._cameras_initializing.remove(camera_id)
     
     def _monitor_cameras(self):
-        """주기적으로 모든 등록된 카메라의 연결 상태를 확인하고 필요시 재연결하는 모니터링 스레드"""
-        check_interval = 30  # 30초마다 모든 카메라 상태 확인
+        """카메라 상태를 주기적으로 모니터링하는 스레드"""
+        check_interval = 60  # 1분마다 체크 (너무 자주 체크하지 않도록)
         
         while not self._monitor_stop_event.is_set():
-            try:
-                # 현재 등록된 모든 카메라 확인
-                logger.info("카메라 상태 모니터링 중...")
-                self._refresh_camera_cache_if_needed()  # 최신 카메라 정보 유지
-                
-                for camera_id in list(self._url_cache.keys()):
-                    # 모니터링 도중 멈춤 요청이 있으면 빠져나감
-                    if self._monitor_stop_event.is_set():
-                        break
-                    
-                    camera_id_str = str(camera_id)  # 문자열 형태로 통일
-                    
-                    try:
-                        # 간단한 연결 테스트
-                        url = self.get_camera_url(camera_id)
-                        if not url:
-                            logger.warning(f"카메라 {camera_id} URL을 찾을 수 없음")
-                            self._camera_status[camera_id_str] = "offline"
-                            continue
-                        
-                        # OpenCV로 빠른 연결 테스트
-                        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
-                        if not cap.isOpened():
-                            logger.warning(f"카메라 {camera_id} 연결 실패, 상태: offline")
-                            self._camera_status[camera_id_str] = "offline"
-                            # 실패한 경우 URL 캐시에서 제거하여 다음 요청 시 DB에서 다시 로드하도록 함
-                            if camera_id_str in self._url_cache:
-                                del self._url_cache[camera_id_str]
-                        else:
-                            # 프레임을 읽을 수 있는지 확인
-                            ret, frame = cap.read()
-                            if ret and frame is not None:
-                                logger.info(f"카메라 {camera_id} 연결 상태: online")
-                                self._camera_status[camera_id_str] = "online"
-                            else:
-                                logger.warning(f"카메라 {camera_id} 프레임을 읽을 수 없음, 상태: error")
-                                self._camera_status[camera_id_str] = "error"
-                                # URL 캐시 갱신
-                                if camera_id_str in self._url_cache:
-                                    del self._url_cache[camera_id_str]
-                        
-                        # 항상 자원 해제
-                        cap.release()
-                        
-                    except Exception as e:
-                        logger.error(f"카메라 {camera_id} 모니터링 중 오류: {e}")
-                        self._camera_status[camera_id_str] = "error"
-                
-                # 모니터링 결과 로깅
-                logger.info(f"카메라 상태 모니터링 결과: {self._camera_status}")
-                
-            except Exception as e:
-                logger.error(f"카메라 모니터링 스레드 오류: {e}")
+            time.sleep(check_interval)
             
-            # 다음 점검까지 대기
-            for _ in range(check_interval):
-                if self._monitor_stop_event.is_set():
-                    break
-                time.sleep(1)
-    
-    def get_camera_status(self, camera_id: Union[int, str]) -> str:
-        """카메라의 현재 연결 상태를 반환합니다."""
-        camera_id_str = str(camera_id)
-        return self._camera_status.get(camera_id_str, "unknown")
+            try:
+                # 특별한 모니터링 작업이 필요한 경우 여기에 구현
+                pass
+            except Exception as e:
+                logger.error(f"카메라 모니터링 중 오류: {e}")
     
     def _load_cameras_from_db(self):
         """데이터베이스에서 카메라 정보 로드"""
@@ -175,17 +192,23 @@ class CameraManager:
             # 모든 카메라 가져오기 (상태와 관계없이)
             cameras = Camera.objects.all()
             
-            # 이전 캐시 비우기
-            self._url_cache.clear()
+            # 이전 캐시 보존 (완전히 비우지 않음)
+            previous_cache = self._url_cache.copy()
             
             # URL 캐시 업데이트
             loaded_count = 0
+            new_url_cache = {}
+            
             for camera in cameras:
                 try:
                     camera_id = str(camera.camera_id)  # 항상 문자열로 저장
                     rtsp_address = camera.rtsp_address
-                    self._url_cache[camera_id] = rtsp_address
-                    logger.info(f"카메라 {camera_id} 캐싱: {rtsp_address}")
+                    new_url_cache[camera_id] = rtsp_address
+                    
+                    # 기존에 없거나 변경된 경우만 로그 출력
+                    if camera_id not in previous_cache or previous_cache[camera_id] != rtsp_address:
+                        logger.info(f"카메라 {camera_id} 캐싱 (새로 추가 또는 변경): {rtsp_address}")
+                    
                     loaded_count += 1
                 except UnicodeDecodeError as ude:
                     logger.error(f"카메라 객체 처리 중 인코딩 오류: {ude}")
@@ -194,20 +217,30 @@ class CameraManager:
                     logger.error(f"카메라 객체 처리 중 오류: {ex}")
                     continue
             
+            # 새 캐시로 업데이트
+            self._url_cache = new_url_cache
+            
             # 마지막 DB 체크 시간 업데이트
             self._last_db_check = time.time()
             
             logger.info(f"데이터베이스에서 {loaded_count}/{len(cameras)} 개의 카메라 정보를 로드했습니다.")
-            logger.info(f"현재 캐시 상태: {self._url_cache}")
+            
+            # 변경된 URL이 있으면 해당 카메라만 재초기화
+            for camera_id, url in self._url_cache.items():
+                if camera_id not in previous_cache or previous_cache[camera_id] != url:
+                    # 이미 초기화 중이 아닌 경우에만 별도 스레드로 초기화
+                    if camera_id not in self._cameras_initializing:
+                        logger.info(f"카메라 {camera_id}의 URL이 변경되어 별도 스레드에서 재초기화합니다.")
+                        threading.Thread(
+                            target=self._initialize_camera, 
+                            args=(camera_id,),
+                            daemon=True
+                        ).start()
             
         except Exception as e:
             logger.error(f"카메라 정보 로드 오류: {e}")
             import traceback
             logger.error(f"상세 오류 정보: {traceback.format_exc()}")
-            
-            # 데이터베이스 연결 실패시 빈 캐시 유지 (하드코딩된 URL 제거)
-            self._url_cache = {}
-            logger.warning("데이터베이스 연결 실패. 카메라 정보가 로드되지 않았습니다.")
     
     def _refresh_camera_cache_if_needed(self):
         """캐시 갱신이 필요한 경우 DB에서 카메라 정보 다시 로드"""
@@ -217,123 +250,33 @@ class CameraManager:
         if current_time - self._last_db_check > self._db_refresh_interval:
             logger.info("캐시 만료로 카메라 정보 리로드")
             self._load_cameras_from_db()
-            
+    
     def force_refresh(self):
         """카메라 URL 캐시를 강제로 갱신합니다."""
         logger.info("카메라 URL 캐시를 강제로 갱신합니다.")
-        self._url_cache.clear()  # 캐시 완전히 비우기
         self._last_db_check = 0  # 다음 호출 시 즉시 DB에서 다시 로드하도록 설정
         self._load_cameras_from_db()  # 즉시 DB에서 다시 로드
         
-        # 모든 카메라 초기화 재시도
-        self._initialize_all_cameras()
-        
         return True
     
-    def force_reconnect(self, camera_id: Union[int, str]) -> bool:
-        """특정 카메라의 연결을 강제로 재시도합니다."""
-        try:
-            camera_id_str = str(camera_id)
-            logger.info(f"카메라 {camera_id_str} 강제 재연결 시도...")
-            
-            # URL 캐시에서 제거하여 DB에서 다시 로드하도록 함
-            if camera_id_str in self._url_cache:
-                del self._url_cache[camera_id_str]
-                
-            # 카메라 URL 다시 가져오기
-            url = self.get_camera_url(camera_id_str)
-            if not url:
-                logger.warning(f"카메라 {camera_id_str} URL을 찾을 수 없어 재연결 실패")
-                self._camera_status[camera_id_str] = "offline"
-                return False
-                
-            # 연결 테스트
-            cap = self.get_optimized_capture(camera_id_str)
-            if cap:
-                ret, frame = cap.read()
-                cap.release()
-                
-                if ret and frame is not None:
-                    logger.info(f"카메라 {camera_id_str} 재연결 성공")
-                    self._camera_status[camera_id_str] = "online"
-                    return True
-                else:
-                    logger.warning(f"카메라 {camera_id_str} 재연결됐으나 프레임을 읽을 수 없음")
-                    self._camera_status[camera_id_str] = "error"
-                    return False
-            else:
-                logger.warning(f"카메라 {camera_id_str} 재연결 실패")
-                self._camera_status[camera_id_str] = "offline"
-                return False
-                
-        except Exception as e:
-            logger.error(f"카메라 {camera_id} 재연결 중 오류: {e}")
-            return False
-            
-    def get_camera_url(self, camera_number: Union[int, str]) -> Optional[str]:
-        """카메라 URL을 가져옵니다."""
-        # DB 캐시 갱신 필요 여부 확인
+    def get_camera_url(self, camera_id):
+        """카메라 ID에 해당하는 RTSP URL 반환"""
+        # 항상 문자열 키로 사용
+        camera_id_str = str(camera_id)
+        
+        # 필요한 경우 캐시 갱신
         self._refresh_camera_cache_if_needed()
         
-        # 문자열로 들어온 경우 int로 변환 시도
-        try:
-            # 항상 문자열 키로 저장하기 위해 str로 변환
-            camera_key = str(camera_number)
-        except (ValueError, TypeError):
-            camera_key = str(camera_number)  # 변환 실패시 문자열로 저장
-        
-        logger.info(f"카메라 URL 요청: {camera_key}, 현재 캐시: {self._url_cache}")
-            
-        if camera_key not in self._url_cache:
-            # 캐시에 없는 경우 DB에서 특정 카메라만 다시 로드 시도
-            try:
-                from ..models import Camera
-                # 모든 상태의 카메라를 확인
-                camera = Camera.objects.filter(camera_id=camera_key).first()
-                
-                if camera:
-                    self._url_cache[camera_key] = camera.rtsp_address
-                    logger.info(f"DB에서 직접 조회: 카메라 {camera_key} = {camera.rtsp_address}")
-                else:
-                    # 로그 추가
-                    logger.warning(f"카메라 {camera_key} URL을 찾을 수 없습니다.")
-                    return None
-                    
-            except Exception as e:
-                logger.error(f"카메라 {camera_key} 정보 조회 오류: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-                return None
-        else:
-            # 캐시에 있더라도 최신 정보 확인 (URL이 변경되었을 가능성이 있음)
-            try:
-                from ..models import Camera
-                camera = Camera.objects.filter(camera_id=camera_key).first()
-                
-                if camera and camera.rtsp_address != self._url_cache[camera_key]:
-                    # DB의 URL과 캐시된 URL이 다른 경우 업데이트
-                    logger.info(f"카메라 {camera_key}의 URL이 변경되었습니다: {self._url_cache[camera_key]} -> {camera.rtsp_address}")
-                    self._url_cache[camera_key] = camera.rtsp_address
-            except Exception as e:
-                # 오류 발생 시 무시하고 기존 캐시 사용
-                logger.warning(f"카메라 {camera_key} 최신 정보 확인 중 오류: {e}")
-            
         # 마지막 접근 시간 업데이트
-        self._last_access[camera_key] = time.time()
+        self._last_access[camera_id_str] = time.time()
         
-        # 캐시된 URL 반환하면서 로깅
-        url = self._url_cache.get(camera_key)
-        logger.info(f"반환된 카메라 URL: {camera_key} = {url}")
-        return url
+        # URL 반환
+        return self._url_cache.get(camera_id_str)
     
     def get_stream_options(self) -> Dict[str, str]:
-        """단순화된 RTSP 스트림 옵션"""
+        """RTSP 스트림 연결에 필요한 옵션 설정"""
         return {
-            # 최소한의 필수 옵션만 유지
-            'rtsp_transport': 'udp',       # UDP 사용 (더 빠름)
-            'buffer_size': '4048576',      # 버퍼 크기 1MB (기본값)
-            'fflags': 'nobuffer',          # 버퍼링 사용하지 않음 (실시간성 확보)
-            'flags': 'low_delay',          # 낮은 지연 설정
+            'rtsp_transport': 'tcp',       # TCP 사용 (더 안정적)
         }
     
     def create_stream_url(self, rtsp_url: str) -> str:

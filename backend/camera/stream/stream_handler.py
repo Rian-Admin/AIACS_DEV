@@ -15,7 +15,7 @@ class StreamHandler:
         self.thread = None
         
         # 버퍼 크기 축소
-        self.frame_buffer = deque(maxlen=2)  # 최대 2개 프레임만 유지 (지연 더 감소)
+        self.frame_buffer = deque(maxlen=10)  # 최대 2개 프레임만 유지 (지연 더 감소)
         
         # 연결 재시도 설정 - 강화된 재연결 시스템
         self.max_retries = 20  # 재시도 횟수 증가

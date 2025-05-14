@@ -71,13 +71,11 @@ const Alerts = ({ language }) => {
         type: 'warning',
         title: {
           ko: '조류 접근 경고',
-          en: 'Bird Approach Warning',
-          id: 'Peringatan Pendekatan Burung'
+          en: 'Bird Approach Warning'
         },
         message: {
           ko: '대형 조류가 활주로에 접근 중입니다. 자동 방어 시스템이 작동했습니다.',
-          en: 'Large birds approaching the runway. Automatic defense system has been activated.',
-          id: 'Burung besar mendekati landasan. Sistem pertahanan otomatis telah diaktifkan.'
+          en: 'Large birds approaching the runway. Automatic defense system has been activated.'
         },
         timestamp: new Date(2023, 3, 15, 10, 30),
         read: false
@@ -87,13 +85,11 @@ const Alerts = ({ language }) => {
         type: 'error',
         title: {
           ko: '시스템 오류',
-          en: 'System Error',
-          id: 'Kesalahan Sistem'
+          en: 'System Error'
         },
         message: {
           ko: '카메라 3번이 응답하지 않습니다. 기술 지원팀에 문의하세요.',
-          en: 'Camera #3 is not responding. Please contact technical support.',
-          id: 'Kamera #3 tidak merespons. Silakan hubungi dukungan teknis.'
+          en: 'Camera #3 is not responding. Please contact technical support.'
         },
         timestamp: new Date(2023, 3, 14, 15, 45),
         read: true
@@ -103,13 +99,11 @@ const Alerts = ({ language }) => {
         type: 'info',
         title: {
           ko: '일일 보고서',
-          en: 'Daily Report',
-          id: 'Laporan Harian'
+          en: 'Daily Report'
         },
         message: {
           ko: '어제의 조류 활동 요약이 준비되었습니다. 분석 페이지에서 확인하세요.',
-          en: 'Yesterday\'s bird activity summary is ready. Check it on the Analytics page.',
-          id: 'Ringkasan aktivitas burung kemarin sudah siap. Periksa di halaman Analitik.'
+          en: 'Yesterday\'s bird activity summary is ready. Check it on the Analytics page.'
         },
         timestamp: new Date(2023, 3, 14, 8, 0),
         read: false
@@ -119,13 +113,11 @@ const Alerts = ({ language }) => {
         type: 'success',
         title: {
           ko: '방어 시스템 활성화',
-          en: 'Defense System Activated',
-          id: 'Sistem Pertahanan Diaktifkan'
+          en: 'Defense System Activated'
         },
         message: {
           ko: '위협 요소가 감지되어 자동 방어 시스템이 성공적으로 활성화되었습니다.',
-          en: 'Automatic defense system successfully activated in response to detected threat.',
-          id: 'Sistem pertahanan otomatis berhasil diaktifkan sebagai respons terhadap ancaman yang terdeteksi.'
+          en: 'Automatic defense system successfully activated in response to detected threat.'
         },
         timestamp: new Date(2023, 3, 13, 12, 15),
         read: false
@@ -171,7 +163,7 @@ const Alerts = ({ language }) => {
   return (
     <Box sx={{ p: 2 }}>
       <Typography variant="h6" fontWeight="bold" sx={{ mb: 3 }}>
-        {translate('알림 및 이벤트', 'Alerts & Events', 'Peringatan & Acara', language)}
+        {translate('알림 및 이벤트', 'Alerts & Events', language)}
       </Typography>
       
       <Paper
@@ -191,12 +183,12 @@ const Alerts = ({ language }) => {
             variant="fullWidth"
           >
             <Tab 
-              label={translate('전체', 'All', 'Semua', language)} 
+              label={translate('전체', 'All', language)} 
               icon={<NotificationsIcon />} 
               iconPosition="start"
             />
             <Tab 
-              label={translate('안 읽음', 'Unread', 'Belum Dibaca', language)} 
+              label={translate('안 읽음', 'Unread', language)} 
               icon={
                 <Box sx={{ position: 'relative' }}>
                   <NotificationsIcon />
@@ -220,7 +212,7 @@ const Alerts = ({ language }) => {
               iconPosition="start"
             />
             <Tab 
-              label={translate('읽음', 'Read', 'Sudah Dibaca', language)} 
+              label={translate('읽음', 'Read', language)} 
               icon={<CheckCircleIcon />} 
               iconPosition="start"
             />
@@ -234,7 +226,7 @@ const Alerts = ({ language }) => {
             onClick={markAllAsRead}
             disabled={unreadCount === 0}
           >
-            {translate('모두 읽음 표시', 'Mark All as Read', 'Tandai Semua Telah Dibaca', language)}
+            {translate('모두 읽음 표시', 'Mark All as Read', language)}
           </Button>
         </Box>
 
@@ -269,7 +261,7 @@ const Alerts = ({ language }) => {
                         {alert.title[language]}
                         {!alert.read && (
                           <Chip 
-                            label={translate('새 알림', 'New', 'Baru', language)} 
+                            label={translate('새 알림', 'New', language)} 
                             color="primary" 
                             size="small" 
                             sx={{ ml: 1 }}
@@ -295,7 +287,7 @@ const Alerts = ({ language }) => {
           ) : (
             <Box sx={{ p: 3, textAlign: 'center' }}>
               <Typography variant="body1" color="text.secondary">
-                {translate('알림이 없습니다.', 'No alerts found.', 'Tidak ada peringatan ditemukan.', language)}
+                {translate('알림이 없습니다.', 'No alerts found.', language)}
               </Typography>
             </Box>
           )}

@@ -25,7 +25,8 @@ from .views.azimuth_setting import (
 # PTZ 추적 컨트롤러 API 함수 가져오기
 from .views.api_views import (
     ptz_setup, ptz_tracking_start, ptz_tracking_stop, 
-    ptz_preset_save, ptz_preset_goto, ptz_preset_list, ptz_scan, ptz_preset_delete
+    ptz_preset_save, ptz_preset_goto, ptz_preset_list, ptz_scan, ptz_preset_delete,
+    update_detection_data, ptz_auto_tracking
 )
 
 urlpatterns = [
@@ -120,6 +121,8 @@ urlpatterns = [
     path('api/ptz/preset/delete/', ptz_preset_delete, name='ptz_preset_delete'),
     path('api/ptz/preset/list/<str:camera_id>/', ptz_preset_list, name='ptz_preset_list'),
     path('api/ptz/scan/', ptz_scan, name='ptz_scan'),
+    path('api/ptz/update-detection/', update_detection_data, name='update_detection_data'),
+    path('api/ptz/auto-tracking/', ptz_auto_tracking, name='ptz_auto_tracking'),
     
     # PTZ 컨트롤러 뷰
     path('ptz-controller/', ptz_controller, name='ptz_controller'),

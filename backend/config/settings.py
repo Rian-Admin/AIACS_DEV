@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-import django_heroku
 import sys
 from datetime import datetime
 

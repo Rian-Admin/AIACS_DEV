@@ -7,20 +7,36 @@ import time
 import numpy as np
 import cv2
 from ..models import Camera
+import threading
+import logging
+
+logger = logging.getLogger(__name__)
 
 # 카메라 객체 캐싱 (매번 새로 생성하지 않도록)
 _camera_cache = {}
 _camera_init_done = False  # 시스템 초기화 완료 여부 추적
+_initialization_lock = threading.Lock()  # 초기화 프로세스 동기화를 위한 락
 
 def initialize_all_cameras():
     """모든 카메라를 강제로 초기화하는 함수 - 시스템 시작 시 호출"""
-    global _camera_init_done
+    global _camera_init_done, _initialization_lock, _camera_cache
     
-    if _camera_init_done:
-        return  # 이미 초기화되었으면 재실행하지 않음
+    # 이미 초기화 중인지 확인
+    with _initialization_lock:
+        if _camera_init_done:
+            logger.info("카메라 시스템이 이미 초기화되어 있습니다.")
+            return  # 이미 초기화되었으면 재실행하지 않음
     
-    print("시스템 시작 시 모든 카메라 강제 초기화...")
-    
+        print("시스템 시작 시 모든 카메라 강제 초기화...")
+        
+        # 동기화된 초기화 작업을 수행
+        _initialize_cameras_internal()
+        
+        # 초기화 완료 표시
+        _camera_init_done = True
+
+def _initialize_cameras_internal():
+    """실제 카메라 초기화 작업을 수행하는 내부 함수"""
     try:
         # 카메라 매니저 인스턴스 가져오기
         camera_manager = CameraManager.get_instance()
@@ -28,44 +44,42 @@ def initialize_all_cameras():
         # DB에서 모든 카메라 가져오기
         db_cameras = Camera.objects.all()
         
+        if not db_cameras:
+            print("등록된 카메라가 없습니다.")
+            return
+            
+        # 카메라 초기화 순서 최적화 (기본 카메라 먼저)
+        camera_ids = sorted([camera.camera_id for camera in db_cameras])
+        
         # 각 카메라를 초기화하고 카메라 캐시에 추가
-        for camera in db_cameras:
-            camera_id = camera.camera_id
+        for camera_id in camera_ids:
+            # 초기화 시작 로그
             print(f"카메라 {camera_id} 초기화 중...")
             
-            # VideoCamera 객체 생성 및 캐시에 추가
-            try:
-                # 이미 캐시에 있는 경우 건너뜀
-                if str(camera_id) in _camera_cache:
+            # 이미 캐시에 있는 경우 건너뜀
+            if str(camera_id) in _camera_cache and _camera_cache[str(camera_id)] is not None:
+                if hasattr(_camera_cache[str(camera_id)], 'stream_handler') and _camera_cache[str(camera_id)].stream_handler is not None:
                     print(f"카메라 {camera_id}는 이미 캐시에 있음")
                     continue
-                
-                # 새 카메라 인스턴스 생성 및 캐시에 추가
+            
+            # 새 카메라 인스턴스 생성 및 캐시에 추가
+            try:
                 camera_obj = VideoCamera(camera_id)
-                _camera_cache[str(camera_id)] = camera_obj
-                print(f"카메라 {camera_id} 초기화 성공")
+                
+                # 성공적으로 초기화되었는지 확인
+                if hasattr(camera_obj, 'stream_handler') and camera_obj.stream_handler is not None:
+                    _camera_cache[str(camera_id)] = camera_obj
+                    print(f"카메라 {camera_id} 초기화 성공")
+                else:
+                    print(f"카메라 {camera_id} 스트림 핸들러 초기화 실패")
                 
                 # 잠시 대기하여 시스템에 과부하가 걸리지 않도록 함
-                time.sleep(0.5)
+                time.sleep(1.0)
                 
             except Exception as e:
                 print(f"카메라 {camera_id} 초기화 중 오류 발생: {e}")
         
-        # 백업 방식으로 1-4 확인 (DB에 없는 경우)
-        if not db_cameras:
-            for camera_id in range(1, 5):  # 1부터 4까지 확인
-                if camera_manager.get_camera_url(camera_id) is not None:
-                    # 캐시에 없으면 추가
-                    if str(camera_id) not in _camera_cache:
-                        try:
-                            camera_obj = VideoCamera(camera_id)
-                            _camera_cache[str(camera_id)] = camera_obj
-                            print(f"카메라 {camera_id} 초기화 성공 (백업 방식)")
-                            time.sleep(0.5)
-                        except Exception as e:
-                            print(f"카메라 {camera_id} 초기화 중 오류 발생: {e}")
-        
-        _camera_init_done = True
+        # 모든 카메라 초기화 완료
         print("모든 카메라 초기화 완료!")
         
     except Exception as e:
@@ -75,16 +89,19 @@ def initialize_all_cameras():
 
 def get_cached_camera(camera_id):
     """캐시된 카메라 객체 반환 또는 새로 생성"""
-    global _camera_cache
+    global _camera_cache, _camera_init_done
     
     # 시스템 시작 시 모든 카메라 초기화 (처음 호출될 때만)
     if not _camera_init_done:
-        initialize_all_cameras()
+        # 별도 스레드에서 초기화 (웹 서버 시작 차단 방지)
+        threading.Thread(target=initialize_all_cameras, daemon=True).start()
+        # 초기화 중인 것으로 표시 (다음 호출 시 다시 초기화하지 않도록)
+        _camera_init_done = True
     
     # 문자열로 변환하여 일관성 유지
     camera_id_str = str(camera_id)
     
-    if camera_id_str not in _camera_cache:
+    if camera_id_str not in _camera_cache or _camera_cache[camera_id_str] is None:
         try:
             # 카메라 매니저에서 URL 확인
             camera_manager = CameraManager.get_instance()

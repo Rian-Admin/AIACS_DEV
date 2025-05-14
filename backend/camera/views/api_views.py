@@ -1087,6 +1087,189 @@ def ptz_scan(request):
         }, status=500)
 
 @csrf_exempt
+def ptz_auto_tracking(request):
+    """추적과 스캔을 통합 관리하는 API
+    
+    추적 모드를 시작하면 객체가 감지되면 자동으로 추적하고,
+    객체가 사라지면 스캔 모드로 전환하여 영역을 순회하며 감시합니다.
+    
+    요청 형식:
+    {
+        "camera_id": "1",
+        "enabled": true,              # 활성화/비활성화 여부
+        "horizontal_steps": 3,        # 수평 스캔 단계 (선택)
+        "vertical_steps": 2           # 수직 스캔 단계 (선택)
+    }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST 요청만 허용됩니다'}, status=405)
+        
+    try:
+        # 요청 데이터 파싱
+        data = json.loads(request.body)
+        camera_id = data.get('camera_id')
+        enabled = data.get('enabled', True)
+        horizontal_steps = data.get('horizontal_steps', 3)
+        vertical_steps = data.get('vertical_steps', 2)
+        
+        # 필수 파라미터 검증
+        if camera_id is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '카메라 ID가 필요합니다'
+            }, status=400)
+        
+        # PTZ 추적 컨트롤러 가져오기
+        ptz_tracker = PTZTrackerController.get_instance()
+        
+        # 카메라 URL 가져오기 (연결되지 않은 경우를 위해)
+        camera_manager = CameraManager.get_instance()
+        rtsp_url = camera_manager.get_camera_url(camera_id)
+        
+        if rtsp_url is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': f'카메라 {camera_id}의 URL을 찾을 수 없습니다'
+            }, status=404)
+        
+        # PTZ 설정 (세션이 없는 경우를 위해)
+        if camera_id not in ptz_tracker.ptz_sessions:
+            if not ptz_tracker.setup_onvif_ptz(camera_id, rtsp_url):
+                return JsonResponse({
+                    'status': 'error', 
+                    'message': f'카메라 {camera_id}의 PTZ 설정 실패'
+                }, status=500)
+        
+        if enabled:
+            # 추적 및 스캔 시작
+            result = ptz_tracker.start_tracking_and_scan(camera_id, horizontal_steps, vertical_steps)
+            
+            if result:
+                return JsonResponse({
+                    'status': 'success',
+                    'message': f"자동 추적 및 스캔 시작 (수평:{horizontal_steps}단계, 수직:{vertical_steps}단계)",
+                    'tracking_active': True
+                })
+            else:
+                return JsonResponse({
+                    'status': 'error', 
+                    'message': '자동 추적 및 스캔 시작 실패'
+                }, status=500)
+        else:
+            # 추적 중지
+            result = ptz_tracker.stop_tracking(camera_id)
+            
+            if result:
+                return JsonResponse({
+                    'status': 'success',
+                    'message': "자동 추적 및 스캔 중지",
+                    'tracking_active': False
+                })
+            else:
+                return JsonResponse({
+                    'status': 'error', 
+                    'message': '자동 추적 및 스캔 중지 실패'
+                }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'status': 'error', 
+            'message': '잘못된 JSON 형식'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"자동 추적 및 스캔 설정 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def update_detection_data(request):
+    """
+    객체 감지 데이터(바운딩 박스) 업데이트 API
+    
+    추적 알고리즘이 객체의 중앙값을 계산하기 위한 바운딩 박스 정보를 전달받습니다.
+    각 초마다 감지된 모든 객체의 바운딩 박스 좌표를 전송하면 됩니다.
+    
+    요청 형식:
+    {
+        "camera_id": "1",
+        "detection_boxes": [
+            [x1, y1, x2, y2],  # 첫 번째 객체 바운딩 박스 (좌상단, 우하단 좌표)
+            [x1, y1, x2, y2],  # 두 번째 객체 바운딩 박스
+            ...
+        ],
+        "frame_width": 1920,   # 프레임 너비 (선택)
+        "frame_height": 1080   # 프레임 높이 (선택)
+    }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST 요청만 허용됩니다'}, status=405)
+        
+    try:
+        # 요청 데이터 파싱
+        data = json.loads(request.body)
+        camera_id = data.get('camera_id')
+        detection_boxes = data.get('detection_boxes', [])
+        frame_width = data.get('frame_width', 1920)  # 기본값 설정
+        frame_height = data.get('frame_height', 1080)  # 기본값 설정
+        
+        # 필수 파라미터 검증
+        if camera_id is None:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '카메라 ID가 필요합니다'
+            }, status=400)
+            
+        # 바운딩 박스 정규화 (프레임 크기 기준)
+        normalized_boxes = []
+        for box in detection_boxes:
+            if len(box) == 4:  # [x1, y1, x2, y2] 형식 확인
+                x1, y1, x2, y2 = box
+                # 좌표를 0~1 범위로 정규화
+                norm_x1 = x1 / frame_width
+                norm_y1 = y1 / frame_height
+                norm_x2 = x2 / frame_width
+                norm_y2 = y2 / frame_height
+                normalized_boxes.append([norm_x1, norm_y1, norm_x2, norm_y2])
+        
+        # PTZ 추적 컨트롤러 가져오기
+        ptz_tracker = PTZTrackerController.get_instance()
+        
+        # 추적 상태 확인
+        is_tracking = ptz_tracker.is_tracking_active(camera_id)
+        
+        # 감지 데이터 업데이트
+        result = ptz_tracker.update_detection_data(camera_id, normalized_boxes)
+        
+        if result:
+            message = "감지 데이터 업데이트 성공"
+            if is_tracking:
+                message += " (추적 중)"
+            return JsonResponse({
+                'status': 'success',
+                'message': message,
+                'is_tracking': is_tracking
+            })
+        else:
+            return JsonResponse({
+                'status': 'error', 
+                'message': '감지 데이터 업데이트 실패'
+            }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'status': 'error', 
+            'message': '잘못된 JSON 형식'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"감지 데이터 업데이트 중 오류: {e}")
+        return JsonResponse({
+            'status': 'error', 
+            'message': f'서버 오류: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
 def reconnect_camera(request, camera_id):
     """카메라 재연결 API"""
     if request.method != 'POST':

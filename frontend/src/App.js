@@ -19,7 +19,7 @@ import Analytics from './scenes/analytics';
 
 function App() {
   const [theme, colorMode] = useMode();
-  const [language, setLanguage] = useState('ko'); // 'ko': 한국어, 'en': 영어, 'id': 인도네시아어
+  const [language, setLanguage] = useState('ko'); // 'ko': 한국어, 'en': 영어
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const { radarEnabled, weatherEnabled } = useAppStore();
 

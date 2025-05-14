@@ -9,6 +9,7 @@ from django.conf import settings
 from ..models import Camera
 import logging
 from django.db import connection
+import threading
 
 # 로그 비활성화
 logger = logging.getLogger(__name__)
@@ -228,19 +229,84 @@ def clear_camera_cache(request):
     """카메라 캐시 강제 비우기 API"""
     if request.method == 'POST':
         try:
-            # CameraManager 인스턴스를 가져와 캐시 비우기
+            # CameraManager 인스턴스를 가져와 캐시 갱신
             from ..frame.camera_manager import CameraManager
             cm = CameraManager.get_instance()
             
-            # 캐시 비우기
-            cm._url_cache.clear()
-            cm._last_db_check = 0  # 강제로 다음 호출 시 DB 조회하도록
-            
-            logger.info("카메라 캐시가 강제로 비워졌습니다.")
-            return JsonResponse({'status': 'success'})
+            # 요청 데이터 파싱 (특정 카메라만 초기화할 경우)
+            camera_id = None
+            try:
+                data = json.loads(request.body)
+                camera_id = data.get('camera_id')
+            except:
+                # 요청 본문이 없거나 JSON이 아닌 경우 무시
+                pass
+                
+            if camera_id:
+                # 특정 카메라만 초기화
+                logger.info(f"카메라 {camera_id} 캐시 초기화 요청")
+                # _url_cache에서 특정 카메라 URL은 유지하되 초기화는 강제로 실행
+                if str(camera_id) in cm._url_cache:
+                    # 해당 카메라가 초기화 중인지 확인
+                    if str(camera_id) in cm._cameras_initializing:
+                        logger.warning(f"카메라 {camera_id}는 이미 초기화 중입니다.")
+                        return JsonResponse({
+                            'status': 'warning', 
+                            'message': f'카메라 {camera_id}는 이미 초기화 중입니다.'
+                        })
+                    
+                    # 초기화 실행 (별도 스레드로)
+                    threading.Thread(
+                        target=cm._initialize_camera,
+                        args=(str(camera_id),),
+                        daemon=True
+                    ).start()
+                    
+                    logger.info(f"카메라 {camera_id} 캐시 초기화가 요청되었습니다.")
+                    return JsonResponse({
+                        'status': 'success',
+                        'message': f'카메라 {camera_id} 캐시 초기화가 시작되었습니다.'
+                    })
+                else:
+                    logger.warning(f"카메라 {camera_id}를 찾을 수 없습니다.")
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f'카메라 {camera_id}를 찾을 수 없습니다.'
+                    }, status=404)
+            else:
+                # 모든 카메라 캐시 초기화
+                logger.info("모든 카메라 캐시 초기화 요청")
+                
+                # 이미 초기화 중인지 확인
+                with cm._global_init_lock:
+                    if cm._cameras_initializing:
+                        logger.warning(f"이미 카메라 초기화가 진행 중입니다: {cm._cameras_initializing}")
+                        return JsonResponse({
+                            'status': 'warning',
+                            'message': f'이미 카메라 초기화가 진행 중입니다: {cm._cameras_initializing}'
+                        })
+                
+                # 캐시 강제 갱신
+                cm.force_refresh()
+                
+                # 별도 스레드에서 모든 카메라 초기화
+                threading.Thread(
+                    target=cm._initialize_all_cameras,
+                    daemon=True
+                ).start()
+                
+                logger.info("카메라 캐시 초기화가 요청되었습니다.")
+                return JsonResponse({
+                    'status': 'success',
+                    'message': '모든 카메라 캐시 초기화가 시작되었습니다.'
+                })
+                
         except Exception as e:
             logger.error(f"카메라 캐시 비우기 오류: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+            
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
 
 @csrf_exempt

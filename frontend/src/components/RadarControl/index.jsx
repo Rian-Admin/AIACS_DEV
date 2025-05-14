@@ -152,12 +152,7 @@ const RadarControl = ({ language }) => {
   
   // 언어 텍스트 번역 함수
   const translate = (korean, english, language) => {
-    // 인도네시아어 지원 추가 (기본값은 영어와 동일)
     if (language === 'ko') return korean;
-    if (language === 'id') {
-      // 기본적으로 영어를 반환하고, 추후 인도네시아어 텍스트를 추가할 수 있음
-      return english;
-    }
     return english;
   };
 

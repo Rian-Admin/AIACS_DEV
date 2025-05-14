@@ -142,7 +142,7 @@
                 <a class="nav-link" href="/speaker-management/">스피커 관리</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="/azimuth-setting/">방위각 설정</a>
+                <a class="nav-link" href="/azimuth-setting/">가드존 설정</a>
             </li>
         </ul>
     </div>
@@ -245,6 +245,9 @@
                             <p><strong>RTSP:</strong> {{ camera.display_rtsp }}</p>
                             <div class="d-flex justify-content-between mt-3">
                                 <button class="btn btn-sm btn-primary edit-btn" data-id="{{ camera.camera_id }}">편집</button>
+                                <button class="btn btn-sm btn-warning refresh-camera-btn" data-id="{{ camera.camera_id }}">
+                                    <i class="fas fa-sync-alt"></i> 초기화
+                                </button>
                                 <button class="btn btn-sm btn-secondary ptz-control-btn" data-id="{{ camera.camera_id }}" data-rtsp="{{ camera.rtsp_address }}">PTZ 제어</button>
                                 <button class="btn btn-sm btn-danger delete-btn" data-id="{{ camera.camera_id }}">삭제</button>
                             </div>
@@ -333,7 +336,7 @@
                             <div class="ptz-status mt-3">
                                 <div class="alert alert-info">
                                     <div>상태: <span id="ptzStatus">대기 중</span></div>
-                                    <div>위치: <span id="ptzPosition">정보 없음</span></div>
+                                    <div>위치: <span id="ptzPosition">정보 가져오는 중...</span></div>
                                 </div>
                             </div>
                         </div>
@@ -607,23 +610,84 @@
                 currentCameraId = null;
             }
 
-            // 캐시 초기화 버튼
-            $('#refreshCacheBtn').click(function() {
+            // 카메라별 초기화 버튼 이벤트 추가
+            $(document).on('click', '.refresh-camera-btn', function() {
+                const cameraId = $(this).data('id');
+                const $btn = $(this);
+                const originalHtml = $btn.html();
+                
+                // 버튼 비활성화 및 로딩 표시
+                $btn.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 초기화 중...');
+                $btn.prop('disabled', true);
+                
                 $.ajax({
                     url: '/api/camera/clear-cache/',
                     type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ camera_id: cameraId }),
                     success: function(response) {
                         if (response.status === 'success') {
-                            showAlert('카메라 캐시가 성공적으로 초기화되었습니다. 새로고침 중...', 'success');
-                            // 1초 후 페이지 새로고침
+                            showAlert(`카메라 ${cameraId} 초기화가 시작되었습니다. 20초 후 자동으로 새로고침합니다.`, 'success');
+                            // 20초 후 페이지 새로고침 (초기화 작업이 완료될 시간 허용)
                             setTimeout(function() {
                                 location.reload();
-                            }, 1000);
+                            }, 20000);
+                        } else if (response.status === 'warning') {
+                            showAlert(response.message, 'warning');
+                            // 버튼 복원
+                            $btn.html(originalHtml);
+                            $btn.prop('disabled', false);
+                        } else {
+                            showAlert('카메라 초기화 실패: ' + response.message, 'danger');
+                            // 버튼 복원
+                            $btn.html(originalHtml);
+                            $btn.prop('disabled', false);
+                        }
+                    },
+                    error: function(xhr) {
+                        let errorMsg = '카메라 초기화 중 오류가 발생했습니다';
+                        try {
+                            errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
+                        } catch(e) {}
+                        showAlert(errorMsg, 'danger');
+                        // 버튼 복원
+                        $btn.html(originalHtml);
+                        $btn.prop('disabled', false);
+                    }
+                });
+            });
+            
+            // 캐시 초기화 버튼
+            $('#refreshCacheBtn').click(function() {
+                const loadingMessage = $('<div class="alert alert-info alert-dismissible fade show alert-notification" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999;">' +
+                                       '<div class="d-flex align-items-center">' +
+                                       '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>' +
+                                       '모든 카메라 캐시 초기화 중...' +
+                                       '</div>' +
+                                       '</div>');
+                $('body').append(loadingMessage);
+
+                $.ajax({
+                    url: '/api/camera/clear-cache/',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({}),
+                    success: function(response) {
+                        loadingMessage.remove();
+                        if (response.status === 'success') {
+                            showAlert('카메라 캐시 초기화가 시작되었습니다. 1분 후 자동으로 새로고침합니다.', 'success');
+                            // 1분 후 페이지 새로고침 (초기화 작업이 완료될 시간 허용)
+                            setTimeout(function() {
+                                location.reload();
+                            }, 60000);
+                        } else if (response.status === 'warning') {
+                            showAlert(response.message, 'warning');
                         } else {
                             showAlert('캐시 초기화 실패: ' + response.message, 'danger');
                         }
                     },
                     error: function(xhr) {
+                        loadingMessage.remove();
                         let errorMsg = '캐시 초기화 중 오류가 발생했습니다';
                         try {
                             errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
@@ -636,7 +700,7 @@
             // URL 변경 시 항상 캐시 초기화 알림
             $('#rtsp_address').change(function() {
                 if ($(this).val() && $('#editMode').val() === 'true') {
-                    showAlert('카메라 URL이 변경되었습니다. 저장 후 캐시가 자동으로 갱신됩니다.', 'info', 3000);
+                    showAlert('카메라 URL이 변경되었습니다. 저장 후 카메라가 자동으로 초기화됩니다.', 'info', 3000);
                 }
             });
             
@@ -731,12 +795,22 @@
                             const pos = response.position;
                             let posText = '';
                             
-                            if (pos.pan !== undefined && pos.tilt !== undefined) {
-                                posText += `Pan: ${pos.pan.toFixed(2)}, Tilt: ${pos.tilt.toFixed(2)}`;
-                            }
-                            
-                            if (pos.zoom !== undefined) {
-                                posText += `, Zoom: ${pos.zoom.toFixed(2)}`;
+                            if (pos) {
+                                if (pos.pan !== undefined) {
+                                    posText += `Pan: ${pos.pan.toFixed(2)}`;
+                                    
+                                    if (pos.tilt !== undefined) {
+                                        posText += `, Tilt: ${pos.tilt.toFixed(2)}`;
+                                    }
+                                    
+                                    if (pos.zoom !== undefined) {
+                                        posText += `, Zoom: ${pos.zoom.toFixed(2)}`;
+                                    }
+                                } else {
+                                    posText = '제한된 위치 정보';
+                                }
+                            } else {
+                                posText = '정보 없음';
                             }
                             
                             $('#ptzPosition').text(posText || '정보 없음');

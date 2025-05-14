@@ -5,6 +5,8 @@ import torch
 import numpy as np
 import threading
 import logging
+import requests
+import json
 from django.utils import timezone
 
 from ..yolo.detector import ObjectDetector
@@ -12,6 +14,7 @@ from ..stream.stream_handler import StreamHandler
 from ..db import db_adapter
 from ..hardware.bird_controller import BirdController
 from ..utils.drawing import draw_detections
+from ..hardware.ptz_xyz import PTZTrackerController
 
 # 로그 비활성화
 logger = logging.getLogger(__name__)
@@ -45,6 +48,19 @@ class VideoCamera:
         # 객체 감지 처리 빈도 제한 (GPU 사용량 절감)
         self._detection_interval = 0.1  # 10 FPS로 객체 감지 (0.1초마다 한 번)
         self._last_detection_time = 0
+        
+        # 추적 관련 변수 초기화
+        self._tracking_enabled = False
+        self._last_tracking_update = 0
+        self._tracking_update_interval = 0.2  # 추적 알고리즘에 0.2초마다 정보 전송 (5 FPS)
+        self._tracking_api_url = "http://127.0.0.1:8000/camera/api/ptz/update-detection/"
+        
+        # PTZ 추적 컨트롤러 가져오기
+        try:
+            self.ptz_tracker = PTZTrackerController.get_instance()
+        except Exception as e:
+            logger.error(f"PTZ 추적 컨트롤러 가져오기 오류: {e}")
+            self.ptz_tracker = None
 
         try:
             from ..frame.camera_manager import CameraManager
@@ -77,7 +93,8 @@ class VideoCamera:
                 'db_updates': 0,
                 'avg_process_time': 0,
                 'total_process_time': 0,
-                'last_fps': 0
+                'last_fps': 0,
+                'tracking_updates': 0  # 추적 업데이트 횟수 추가
             }
             
             # 결과 처리 및 DB 업데이트를 위한 스레드 시작
@@ -219,10 +236,22 @@ class VideoCamera:
                                         self._process_detection_results(result.boxes, width, height)
                                         self._last_db_update = current_time
                             
+                            # 추적 알고리즘에 감지 결과 전송 
+                            current_time = time.time()
+                            if current_time - self._last_tracking_update >= self._tracking_update_interval:
+                                self._send_detection_to_tracker(result.boxes, width, height)
+                                self._last_tracking_update = current_time
+                            
                         except Exception as e:
                             logger.error(f"바운딩 박스 그리기 오류: {e}")
                             import traceback
                             logger.error(traceback.format_exc())
+                    elif self._tracking_enabled:
+                        # 객체가 없는 경우에도 빈 배열로 추적 업데이트 (객체 없음 상태를 알리기 위해)
+                        current_time = time.time()
+                        if current_time - self._last_tracking_update >= self._tracking_update_interval:
+                            self._send_detection_to_tracker([], width, height)
+                            self._last_tracking_update = current_time
                     
                     # 마지막 감지 시간 업데이트
                     self._last_detection_time = current_time
@@ -241,6 +270,19 @@ class VideoCamera:
                     frame, 
                     f"Det FPS: {detection_fps:.1f}", 
                     (10, 30),
+                    cv2.FONT_HERSHEY_COMPLEX, 
+                    0.4, 
+                    (0, 0, 0),
+                    1
+                )
+            
+            # 추적 상태 표시
+            if self._tracking_enabled:
+                tracking_text = "추적 활성화"
+                cv2.putText(
+                    frame, 
+                    tracking_text, 
+                    (10, 50),
                     cv2.FONT_HERSHEY_COMPLEX, 
                     0.4, 
                     (0, 0, 0),
@@ -271,6 +313,69 @@ class VideoCamera:
             import traceback
             logger.error(traceback.format_exc())
             return self._create_empty_frame(f"오류: {str(e)}")
+    
+    def _send_detection_to_tracker(self, boxes, frame_width, frame_height):
+        """감지된 객체 바운딩 박스 정보를 추적 알고리즘에 전송"""
+        try:
+            # 카메라 ID를 문자열로 변환
+            camera_id_str = str(self.camera_number)
+            
+            # 추적 상태 확인
+            if self.ptz_tracker:
+                self._tracking_enabled = self.ptz_tracker.is_tracking_active(camera_id_str)
+            
+            # 추적이 비활성화 상태면 전송하지 않음
+            if not self._tracking_enabled:
+                return
+            
+            # 바운딩 박스 추출
+            detection_boxes = []
+            if boxes is not None and hasattr(boxes, '__len__') and len(boxes) > 0:
+                for box in boxes:
+                    try:
+                        if box.xyxy is not None and len(box.xyxy) > 0:
+                            # 좌표 추출
+                            xyxy = box.xyxy[0].cpu().numpy()
+                            x1, y1, x2, y2 = xyxy
+                            
+                            # 좌표 범위 제한
+                            x1 = max(0, min(x1, frame_width - 1))
+                            y1 = max(0, min(y1, frame_height - 1))
+                            x2 = max(0, min(x2, frame_width - 1))
+                            y2 = max(0, min(y2, frame_height - 1))
+                            
+                            # 바운딩 박스 추가
+                            detection_boxes.append([float(x1), float(y1), float(x2), float(y2)])
+                    except Exception as e:
+                        logger.error(f"바운딩 박스 추출 오류: {e}")
+            
+            # 추적 컨트롤러가 있으면 직접 호출, 없으면 API를 통해 전송
+            if self.ptz_tracker:
+                # 직접 메서드 호출 (더 효율적)
+                self.ptz_tracker.update_detection_data(camera_id_str, detection_boxes)
+            else:
+                # API를 통한 전송 (백업 방식)
+                # 데이터 준비
+                data = {
+                    'camera_id': camera_id_str,
+                    'detection_boxes': detection_boxes,
+                    'frame_width': frame_width,
+                    'frame_height': frame_height
+                }
+                
+                # API 호출
+                requests.post(
+                    self._tracking_api_url,
+                    data=json.dumps(data),
+                    headers={'Content-Type': 'application/json'},
+                    timeout=0.5  # 최대 0.5초 타임아웃
+                )
+            
+            # 통계 업데이트
+            self.stats['tracking_updates'] += 1
+            
+        except Exception as e:
+            logger.error(f"추적 데이터 전송 오류: {e}")
     
     def _encode_frame(self, frame, quality=80):
         """프레임을 JPEG 바이트로 인코딩합니다."""
@@ -506,6 +611,11 @@ class VideoCamera:
                 "state": "ACTIVE",
             }
         
+        # 추적 상태 추가
+        tracking_status = "OFF"
+        if self._tracking_enabled:
+            tracking_status = "ON"
+        
         return {
             "camera_id": self.camera_number,
             "stream": stream_status,
@@ -513,8 +623,10 @@ class VideoCamera:
             "detector": {
                 "avg_process_time": self.stats['avg_process_time'],
                 "detection_count": self.stats['detection_count'],
-                "db_updates": self.stats['db_updates']
-            }
+                "db_updates": self.stats['db_updates'],
+                "tracking_updates": self.stats['tracking_updates']
+            },
+            "tracking": tracking_status
         }
 
     def __del__(self):

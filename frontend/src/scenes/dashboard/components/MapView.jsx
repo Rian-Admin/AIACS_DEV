@@ -1131,26 +1131,7 @@ const MapView = ({
             >
               <Box display="flex" alignItems="center">
                 <VolumeUpIcon fontSize="small" />
-                <Typography variant="caption" sx={{ ml: 0.5 }}>0</Typography>
-              </Box>
-            </IconButton>
-          </Tooltip>
-
-          {/* 스피커 사운드 1 시작 버튼 */}
-          <Tooltip title={translate('사운드 1 시작', 'Play Sound 1', language)}>
-            <IconButton
-              size="small"
-              sx={{
-                color: 'white',
-                backgroundColor: '#1e3a5a',
-                mr: 1,
-                '&:hover': { backgroundColor: '#2c4f7c' }
-              }}
-              onClick={() => playSpeakerSound(1)}
-            >
-              <Box display="flex" alignItems="center">
-                <MusicNoteIcon fontSize="small" />
-                <Typography variant="caption" sx={{ ml: 0.5 }}>1</Typography>
+          
               </Box>
             </IconButton>
           </Tooltip>
