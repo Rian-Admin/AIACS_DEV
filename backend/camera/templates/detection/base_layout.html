@@ -69,6 +69,7 @@
     
     <!-- 페이지별 커스텀 스타일 -->
     {% block styles %}{% endblock %}
+    {% block custom_styles %}{% endblock %}
 </head>
 <body>
     <!-- 일관된 헤더 -->
@@ -91,6 +92,9 @@
                 <a class="nav-link {% if request.path == '/camera-management/' %}active{% endif %}" href="/camera-management/" target="_top">카메라 관리</a>
             </li>
             <li class="nav-item">
+                <a class="nav-link {% if request.path == '/detection-videos/' %}active{% endif %}" href="/detection-videos/" target="_top">감지 영상</a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link {% if request.path == '/db-management/' %}active{% endif %}" href="/db-management/" target="_top">데이터베이스 관리</a>
             </li>
             <li class="nav-item">
@@ -98,6 +102,9 @@
             </li>
             <li class="nav-item">
                 <a class="nav-link {% if request.path == '/speaker-management/' %}active{% endif %}" href="/speaker-management/" target="_top">스피커 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.path == '/azimuth-setting/' %}active{% endif %}" href="/azimuth-setting/" target="_top">가드존 설정</a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {% if request.path == '/ptz-controller/' %}active{% endif %}" href="/ptz-controller/" target="_top">PTZ 컨트롤러</a>
@@ -113,5 +120,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     {% block scripts %}{% endblock %}
+    {% block custom_scripts %}{% endblock %}
 </body>
 </html> 

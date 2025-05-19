@@ -70,13 +70,13 @@ api.interceptors.response.use(
 // API 모듈 그룹화
 const weatherAPI = {
   // 현재 날씨 데이터 가져오기
-  getCurrentWeather: () => api.get('/weather/current'),
+  getCurrentWeather: () => api.get('/api/weather/current/'),
   
-  // 일기 예보 가져오기
-  getForecast: (days = 5) => api.get(`/weather/forecast?days=${days}`),
+  // 날씨 데이터 수동 업데이트
+  updateWeather: () => api.post('/api/weather/update/'),
   
-  // 기상 경보 가져오기
-  getAlerts: () => api.get('/weather/alerts'),
+  // 날씨 이력 데이터 가져오기
+  getWeatherHistory: () => api.get('/api/weather/history/'),
 };
 
 const cameraAPI = {

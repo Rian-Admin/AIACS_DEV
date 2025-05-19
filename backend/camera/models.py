@@ -11,6 +11,19 @@ class DetectionInfo(models.Model):
     def __str__(self):
         return f"탐지 ID: {self.detection_id} - {self.detection_time}"
 
+# 감지 영상 테이블 (detection_video)
+class DetectionVideo(models.Model):
+    camera = models.ForeignKey('Camera', on_delete=models.CASCADE)
+    file_path = models.CharField(max_length=255)
+    record_time = models.DateTimeField()
+    duration = models.FloatField()
+    
+    def __str__(self):
+        return f"영상: {self.camera} - {self.record_time}"
+        
+    class Meta:
+        ordering = ['-record_time']
+
 class BBInfo(models.Model):
     record_id = models.AutoField(primary_key=True)
     detection_info_id = models.ForeignKey('DetectionInfo', on_delete=models.CASCADE)

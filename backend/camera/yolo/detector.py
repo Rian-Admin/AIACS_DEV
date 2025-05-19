@@ -607,9 +607,32 @@ class ObjectDetector:
                 # 사각형 그리기
                 cv2.rectangle(visualized_frame, (x, y), (x + w, y + h), color, 2)
                 
-                # 라벨 그리기 (간단하게 "ZONE"만 표시)
+                # 라벨 그리기 - 텍스트 겹침 방지를 위한 향상된 방식
                 label = f"ZONE {i+1}"
-                cv2.putText(visualized_frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                
+                # 텍스트 크기 계산
+                text_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+                text_w, text_h = text_size
+                
+                # 텍스트 배경 그리기 (텍스트 가독성 향상)
+                cv2.rectangle(
+                    visualized_frame, 
+                    (x, y - text_h - 10), 
+                    (x + text_w + 10, y - 5), 
+                    (0, 0, 0), 
+                    -1  # 배경 채우기
+                )
+                
+                # 텍스트 그리기
+                cv2.putText(
+                    visualized_frame, 
+                    label, 
+                    (x + 5, y - 10), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 
+                    0.5, 
+                    (255, 255, 255),  # 흰색 텍스트
+                    1
+                )
             
             return visualized_frame
             

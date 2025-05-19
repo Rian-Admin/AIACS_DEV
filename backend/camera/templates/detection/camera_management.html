@@ -1,11 +1,9 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>카메라 관리 - 조류충돌방지시스템</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% extends "detection/base_layout.html" %}
+
+{% block title %}카메라 관리 - 조류충돌방지시스템{% endblock %}
+{% block subtitle %}카메라 관리 페이지{% endblock %}
+
+{% block styles %}
     <style>
         /* 일관된 테마 스타일 */
         body {
@@ -111,51 +109,13 @@
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
     </style>
-</head>
-<body>
-    <!-- 일관된 헤더 -->
-    <header class="system-header">
-        <div class="container">
-            <h1 class="system-title">
-                <i class="fas fa-dove"></i> 조류충돌방지시스템
-            </h1>
-            <p class="system-subtitle">카메라 관리 페이지</p>
-        </div>
-    </header>
-    
-    <!-- 일관된 탭 내비게이션 -->
-    <div class="container">
-        <ul class="nav nav-tabs">
-            <li class="nav-item">
-                <a class="nav-link" href="/">메인 대시보드</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link active" href="/camera-management/">카메라 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/db-management/">데이터베이스 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/model-management/">모델 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/speaker-management/">스피커 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/azimuth-setting/">가드존 설정</a>
-            </li>
-        </ul>
-    </div>
+{% endblock %}
 
+{% block content %}
     <div class="container container-main">
         <h1 class="mb-4">카메라 관리</h1>
         
         <div class="row mb-4">
-            <div class="col-md-12 d-flex justify-content-end mb-3">
-                <button id="refreshCacheBtn" class="btn btn-warning me-3">
-                    <i class="fas fa-sync-alt"></i> 카메라 캐시 초기화
-                </button>
-            </div>
             <div class="col-md-12">
                 <div id="cameraForm">
                     <h3 class="mb-3" id="formTitle">카메라 추가</h3>
@@ -245,9 +205,6 @@
                             <p><strong>RTSP:</strong> {{ camera.display_rtsp }}</p>
                             <div class="d-flex justify-content-between mt-3">
                                 <button class="btn btn-sm btn-primary edit-btn" data-id="{{ camera.camera_id }}">편집</button>
-                                <button class="btn btn-sm btn-warning refresh-camera-btn" data-id="{{ camera.camera_id }}">
-                                    <i class="fas fa-sync-alt"></i> 초기화
-                                </button>
                                 <button class="btn btn-sm btn-secondary ptz-control-btn" data-id="{{ camera.camera_id }}" data-rtsp="{{ camera.rtsp_address }}">PTZ 제어</button>
                                 <button class="btn btn-sm btn-danger delete-btn" data-id="{{ camera.camera_id }}">삭제</button>
                             </div>
@@ -348,25 +305,11 @@
             </div>
         </div>
     </div>
+{% endblock %}
 
-    <!-- Bootstrap과 jQuery 라이브러리 -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.min.js"></script>
-    
+{% block scripts %}
     <script>
         $(document).ready(function() {
-            // 탭 네비게이션 개선 - 직접 페이지 이동 처리
-            $('.nav-tabs .nav-link').off('click').on('click', function(e) {
-                e.preventDefault();
-                const href = $(this).attr('href');
-                if (href && href !== '#' && href !== window.location.pathname) {
-                    console.log('탭 클릭: ' + href);
-                    window.location.href = href;
-                    return false;
-                }
-            });
-            
             // 기존 DOM 요소를 jQuery 방식으로 사용하도록 변경
             const $form = $('#addCameraForm');
             const $formTitle = $('#formTitle');
@@ -497,12 +440,36 @@
                     }
                 });
             });
+        
+        // 편집 모드 설정 함수
+        function setEditMode(isEdit, cameraId) {
+            $editMode.val(isEdit);
+            currentCameraId = cameraId;
+            
+            if (isEdit) {
+                $formTitle.text('카메라 편집');
+                $submitBtn.text('카메라 업데이트');
+                $cancelBtn.removeClass('d-none');
+            } else {
+                $formTitle.text('카메라 추가');
+                $submitBtn.text('카메라 추가');
+                $cancelBtn.addClass('d-none');
+                $form[0].reset();
+                $cameraIdInput.prop('disabled', false);
+            }
+        }
+        
+        // 취소 버튼 클릭 이벤트
+        $cancelBtn.on('click', function() {
+            setEditMode(false);
+        });
             
             // 삭제 버튼 클릭 이벤트
             $('.delete-btn').on('click', function() {
                 const cameraId = $(this).data('id');
-                // 삭제할 카메라 ID를 삭제 버튼에 데이터로 저장
                 $('#confirmDelete').data('id', cameraId);
+            
+            // 삭제 확인 모달 표시
                 $('#deleteModal').modal('show');
             });
             
@@ -515,13 +482,14 @@
                     url: `/api/camera/delete/${cameraId}/`,
                     type: 'POST',
                     success: function(response) {
+                    if (response.status === 'success') {
+                        // 삭제 모달 닫기
                         $('#deleteModal').modal('hide');
                         
-                        if (response.status === 'success') {
                             // 성공 알림 표시
                             showAlert('카메라가 성공적으로 삭제되었습니다. 페이지를 새로고침합니다...', 'success');
                             
-                            // 1초 후 페이지 새로고침 (캐시 적용을 위해)
+                        // 1초 후 페이지 새로고침
                             setTimeout(function() {
                                 location.reload();
                             }, 1000);
@@ -530,8 +498,6 @@
                         }
                     },
                     error: function(xhr) {
-                        $('#deleteModal').modal('hide');
-                        
                         let errorMsg = '카메라 삭제 중 오류가 발생했습니다';
                         try {
                             errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
@@ -541,346 +507,143 @@
                 });
             });
             
-            // 취소 버튼 클릭 이벤트
-            $cancelBtn.on('click', function() {
-                resetForm();
-            });
-            
             // 파일 선택 버튼 클릭 이벤트
             $('#fileSelectBtn').on('click', function() {
                 $('#videoFileInput').click();
             });
             
-            // 비디오 파일 선택 시 이벤트
+        // 파일 입력 변경 이벤트 - 파일 선택 시 실제 업로드 진행
             $('#videoFileInput').on('change', function() {
-                const fileInput = this;
+            const file = this.files[0];
+            if (file) {
+                // 파일 업로드 폼 생성
+                const formData = new FormData();
+                formData.append('video_file', file);
                 
-                if (fileInput.files && fileInput.files.length > 0) {
-                    const formData = new FormData();
-                    formData.append('video_file', fileInput.files[0]);
-                    
-                    // 비디오 파일 업로드 API 호출
-                    $.ajax({
-                        url: '/api/camera/upload-video/',
-                        type: 'POST',
-                        data: formData,
-                        processData: false,
-                        contentType: false,
-                        success: function(response) {
-                            if (response.status === 'success') {
-                                // 업로드된 파일 경로를 RTSP 주소 필드에 설정
-                                $('#rtsp_address').val(response.file_path);
-                                showAlert('비디오 파일이 성공적으로 업로드되었습니다', 'success');
-                            } else {
-                                showAlert('파일 업로드 실패: ' + response.message, 'danger');
-                            }
-                        },
-                        error: function(xhr) {
-                            let errorMsg = '파일 업로드 중 오류가 발생했습니다';
-                            try {
-                                errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
-                            } catch(e) {}
-                            showAlert(errorMsg, 'danger');
-                        }
-                    });
-                }
-            });
-            
-            // 편집 모드 설정 함수
-            function setEditMode(isEdit, cameraId) {
-                $editMode.val(isEdit ? 'true' : 'false');
-                currentCameraId = cameraId;
+                // 업로드 중 상태 표시
+                $('#rtsp_address').attr('placeholder', '파일 업로드 중...');
+                $('#rtsp_address').prop('disabled', true);
+                $('#fileSelectBtn').prop('disabled', true);
                 
-                if (isEdit) {
-                    $formTitle.text('카메라 편집');
-                    $submitBtn.text('변경사항 저장');
-                    $cancelBtn.removeClass('d-none');
-                } else {
-                    $formTitle.text('카메라 추가');
-                    $submitBtn.text('카메라 추가');
-                    $cancelBtn.addClass('d-none');
-                    $cameraIdInput.prop('disabled', false);
-                }
-            }
-            
-            // 폼 초기화 함수
-            function resetForm() {
-                $form[0].reset();
-                setEditMode(false, null);
-                currentCameraId = null;
-            }
-
-            // 카메라별 초기화 버튼 이벤트 추가
-            $(document).on('click', '.refresh-camera-btn', function() {
-                const cameraId = $(this).data('id');
-                const $btn = $(this);
-                const originalHtml = $btn.html();
-                
-                // 버튼 비활성화 및 로딩 표시
-                $btn.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 초기화 중...');
-                $btn.prop('disabled', true);
-                
+                // 실제 파일 업로드 요청
                 $.ajax({
-                    url: '/api/camera/clear-cache/',
+                    url: '/api/camera/upload-video/',
                     type: 'POST',
-                    contentType: 'application/json',
-                    data: JSON.stringify({ camera_id: cameraId }),
+                    data: formData,
+                    processData: false,
+                    contentType: false,
                     success: function(response) {
                         if (response.status === 'success') {
-                            showAlert(`카메라 ${cameraId} 초기화가 시작되었습니다. 20초 후 자동으로 새로고침합니다.`, 'success');
-                            // 20초 후 페이지 새로고침 (초기화 작업이 완료될 시간 허용)
-                            setTimeout(function() {
-                                location.reload();
-                            }, 20000);
-                        } else if (response.status === 'warning') {
-                            showAlert(response.message, 'warning');
-                            // 버튼 복원
-                            $btn.html(originalHtml);
-                            $btn.prop('disabled', false);
+                            // 업로드 성공 시 파일 경로를 RTSP 필드에 설정
+                            $('#rtsp_address').val(response.file_path);
+                            showAlert('파일 업로드 성공: ' + response.original_filename, 'success');
                         } else {
-                            showAlert('카메라 초기화 실패: ' + response.message, 'danger');
-                            // 버튼 복원
-                            $btn.html(originalHtml);
-                            $btn.prop('disabled', false);
+                            showAlert('파일 업로드 실패: ' + response.message, 'danger');
                         }
                     },
-                    error: function(xhr) {
-                        let errorMsg = '카메라 초기화 중 오류가 발생했습니다';
-                        try {
-                            errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
-                        } catch(e) {}
-                        showAlert(errorMsg, 'danger');
-                        // 버튼 복원
-                        $btn.html(originalHtml);
-                        $btn.prop('disabled', false);
-                    }
-                });
-            });
-            
-            // 캐시 초기화 버튼
-            $('#refreshCacheBtn').click(function() {
-                const loadingMessage = $('<div class="alert alert-info alert-dismissible fade show alert-notification" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999;">' +
-                                       '<div class="d-flex align-items-center">' +
-                                       '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>' +
-                                       '모든 카메라 캐시 초기화 중...' +
-                                       '</div>' +
-                                       '</div>');
-                $('body').append(loadingMessage);
-
-                $.ajax({
-                    url: '/api/camera/clear-cache/',
-                    type: 'POST',
-                    contentType: 'application/json',
-                    data: JSON.stringify({}),
-                    success: function(response) {
-                        loadingMessage.remove();
-                        if (response.status === 'success') {
-                            showAlert('카메라 캐시 초기화가 시작되었습니다. 1분 후 자동으로 새로고침합니다.', 'success');
-                            // 1분 후 페이지 새로고침 (초기화 작업이 완료될 시간 허용)
-                            setTimeout(function() {
-                                location.reload();
-                            }, 60000);
-                        } else if (response.status === 'warning') {
-                            showAlert(response.message, 'warning');
-                        } else {
-                            showAlert('캐시 초기화 실패: ' + response.message, 'danger');
-                        }
+                    error: function(xhr, status, error) {
+                        console.error('업로드 오류:', status, error);
+                        console.error('응답:', xhr.responseText);
+                        showAlert('파일 업로드 실패: ' + error, 'danger');
                     },
-                    error: function(xhr) {
-                        loadingMessage.remove();
-                        let errorMsg = '캐시 초기화 중 오류가 발생했습니다';
-                        try {
-                            errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
-                        } catch(e) {}
-                        showAlert(errorMsg, 'danger');
+                    complete: function() {
+                        // 업로드 완료 후 UI 상태 복원
+                        $('#rtsp_address').prop('disabled', false);
+                        $('#fileSelectBtn').prop('disabled', false);
+                        $('#rtsp_address').attr('placeholder', 'RTSP 주소 또는 비디오 파일');
                     }
                 });
-            });
-            
-            // URL 변경 시 항상 캐시 초기화 알림
-            $('#rtsp_address').change(function() {
-                if ($(this).val() && $('#editMode').val() === 'true') {
-                    showAlert('카메라 URL이 변경되었습니다. 저장 후 카메라가 자동으로 초기화됩니다.', 'info', 3000);
-                }
-            });
-            
-            // 알림 표시 함수
-            function showAlert(message, type, duration) {
-                // 기존 알림 제거
-                $('.alert-notification').remove();
-                
-                // 새 알림 생성
-                const alertDiv = $('<div class="alert alert-' + type + ' alert-dismissible fade show alert-notification" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999;">' +
-                                 message +
-                                 '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
-                                 '</div>');
-                
-                // 알림 표시
-                $('body').append(alertDiv);
-                
-                // 지정된 시간 후 자동 제거 (지정하지 않으면 5초)
-                duration = duration || 5000;
-                setTimeout(function() {
-                    alertDiv.alert('close');
-                }, duration);
             }
+        });
 
             // PTZ 제어 버튼 클릭 이벤트
             $('.ptz-control-btn').on('click', function() {
                 const cameraId = $(this).data('id');
-                const rtspUrl = $(this).data('rtsp');
+            const rtspAddress = $(this).data('rtsp');
                 
                 // 모달에 카메라 정보 설정
-                $('#ptzCameraInfo').text(`카메라 ID: ${cameraId}`);
-                $('#ptzStatus').text('대기 중');
-                $('#ptzPosition').text('정보 가져오는 중...');
+            $('#ptzCameraInfo').text(`카메라 ID: ${cameraId}, RTSP: ${rtspAddress}`);
                 
                 // 모달 표시
                 $('#ptzControlModal').modal('show');
                 
-                // 현재 선택된 카메라 ID 저장
-                currentPtzCameraId = cameraId;
-                
-                // 현재 카메라 위치 정보 가져오기
-                getPtzPosition(cameraId);
-            });
-            
-            // PTZ 방향 버튼 이벤트 (마우스 down/up으로 처리)
-            $('.ptz-btn').on('mousedown touchstart', function(e) {
-                e.preventDefault();
-                const direction = $(this).data('direction');
-                
-                if (currentPtzCameraId) {
-                    controlPtz(currentPtzCameraId, direction, true);
-                }
-            });
-            
-            $('.ptz-btn').on('mouseup touchend mouseleave', function(e) {
-                e.preventDefault();
-                const direction = $(this).data('direction');
-                
-                if (currentPtzCameraId) {
-                    controlPtz(currentPtzCameraId, direction, false);
-                }
-            });
-            
-            // PTZ 제어 모달이 닫힐 때 PTZ 동작 정지
-            $('#ptzControlModal').on('hidden.bs.modal', function() {
-                if (currentPtzCameraId) {
-                    // 모든 방향에 대해 정지 명령 전송 (한 번만 해도 될 수 있지만 확실히 하기 위해)
-                    controlPtz(currentPtzCameraId, 'LEFT', false);
-                }
-                
-                // 위치 정보 업데이트 타이머 정리
-                if (positionUpdateTimer) {
-                    clearInterval(positionUpdateTimer);
-                    positionUpdateTimer = null;
-                }
-            });
-            
-            // 현재 선택된 PTZ 카메라 ID
-            let currentPtzCameraId = null;
-            
-            // 위치 정보 업데이트 타이머
-            let positionUpdateTimer = null;
-            
-            // PTZ 위치 정보 가져오기 함수
-            function getPtzPosition(cameraId) {
+            // PTZ 상태 가져오기
                 $.ajax({
-                    url: `/api/ptz/position/${cameraId}/`,
+                url: `/api/ptz/status/${cameraId}/`,
                     type: 'GET',
                     success: function(response) {
                         if (response.status === 'success') {
-                            // 위치 정보 표시
-                            const pos = response.position;
-                            let posText = '';
-                            
-                            if (pos) {
-                                if (pos.pan !== undefined) {
-                                    posText += `Pan: ${pos.pan.toFixed(2)}`;
-                                    
-                                    if (pos.tilt !== undefined) {
-                                        posText += `, Tilt: ${pos.tilt.toFixed(2)}`;
-                                    }
-                                    
-                                    if (pos.zoom !== undefined) {
-                                        posText += `, Zoom: ${pos.zoom.toFixed(2)}`;
-                                    }
+                        $('#ptzStatus').text('연결됨');
+                        $('#ptzPosition').text(`Pan: ${response.pan}, Tilt: ${response.tilt}, Zoom: ${response.zoom}`);
                                 } else {
-                                    posText = '제한된 위치 정보';
-                                }
-                            } else {
-                                posText = '정보 없음';
-                            }
-                            
-                            $('#ptzPosition').text(posText || '정보 없음');
-                            
-                            // 상태 업데이트
-                            $('#ptzStatus').text(response.is_moving ? '이동 중' : '대기 중');
-                            
-                            // 위치 정보 주기적 업데이트
-                            if (!positionUpdateTimer) {
-                                positionUpdateTimer = setInterval(function() {
-                                    if (currentPtzCameraId) {
-                                        getPtzPosition(currentPtzCameraId);
-                                    }
-                                }, 1000); // 1초마다 업데이트
-                            }
-                        } else {
-                            $('#ptzPosition').text('정보 없음');
-                            $('#ptzStatus').text('오류');
-                            showAlert('위치 정보를 가져올 수 없습니다: ' + response.message, 'warning');
-                        }
-                    },
-                    error: function(xhr) {
+                        $('#ptzStatus').text('연결 실패');
                         $('#ptzPosition').text('정보 없음');
-                        $('#ptzStatus').text('오류');
-                        
-                        let errorMsg = '위치 정보를 가져오는 중 오류가 발생했습니다';
-                        try {
-                            errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
-                        } catch(e) {}
-                        showAlert(errorMsg, 'danger');
                     }
-                });
-            }
+                },
+                error: function() {
+                    $('#ptzStatus').text('오류');
+                    $('#ptzPosition').text('서버 통신 실패');
+                }
+            });
+        });
+        
+        // PTZ 방향 버튼 클릭 이벤트
+        $('.ptz-btn').on('click', function() {
+            const direction = $(this).data('direction');
+            const cameraId = $('#ptzCameraInfo').text().split(',')[0].replace('카메라 ID: ', '');
             
-            // PTZ 제어 함수
-            function controlPtz(cameraId, direction, isContinuous) {
+            // PTZ 명령 전송
                 $.ajax({
                     url: '/api/ptz/control/',
                     type: 'POST',
                     contentType: 'application/json',
                     data: JSON.stringify({
                         camera_id: cameraId,
-                        direction: direction,
-                        is_continuous: isContinuous,
-                        speed: 0.7
+                    direction: direction
                     }),
                     success: function(response) {
                         if (response.status === 'success') {
-                            $('#ptzStatus').text(response.is_moving ? '이동 중' : '대기 중');
-                            // isContinuous가 false일 때는 메시지 표시 안 함 (정지 명령)
-                            if (isContinuous) {
-                                showAlert(response.message, 'info', 1000);
-                            }
+                        $('#ptzStatus').text('명령 전송 성공');
                         } else {
-                            $('#ptzStatus').text('오류');
-                            showAlert('PTZ 제어 실패: ' + response.message, 'warning');
-                        }
-                    },
-                    error: function(xhr) {
-                        $('#ptzStatus').text('오류');
-                        
-                        let errorMsg = 'PTZ 제어 중 오류가 발생했습니다';
-                        try {
-                            errorMsg = JSON.parse(xhr.responseText).message || errorMsg;
-                        } catch(e) {}
-                        showAlert(errorMsg, 'danger');
+                        $('#ptzStatus').text('명령 전송 실패');
                     }
-                });
-            }
+                },
+                error: function() {
+                    $('#ptzStatus').text('서버 통신 오류');
+                }
+            });
+        });
+        
+        // 알림 표시 함수
+        function showAlert(message, type) {
+            // 기존 알림 제거
+            $('.alert-notification').remove();
+            
+            // 새 알림 생성
+            const alertHtml = `
+                <div class="alert alert-${type} alert-dismissible fade show alert-notification" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `;
+            
+            // 알림 추가
+            $('body').append(alertHtml);
+            
+            // 알림 위치 조정
+            $('.alert-notification').css({
+                'position': 'fixed',
+                'top': '20px',
+                'right': '20px',
+                'z-index': '9999',
+                'min-width': '300px'
+            });
+            
+            // 3초 후 자동으로 닫기
+            setTimeout(function() {
+                $('.alert-notification').alert('close');
+            }, 3000);
+        }
         });
     </script>
-</body>
-</html>
+{% endblock %}

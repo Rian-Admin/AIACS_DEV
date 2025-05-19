@@ -18,6 +18,10 @@ import DailyStatsChart from './components/DailyStatsChart';
 import SpeciesStatsChart from './components/SpeciesStatsChart';
 import RadarDirectionChart from './components/RadarDirectionChart';
 
+// API_BASE_URL을 파일 상단에 한 번만 정의하고 모든 곳에서 동일하게 사용하도록 변경
+// 하드코딩된 localhost:8000 URL을 상대 경로로 변경
+const API_BASE_URL = process.env.REACT_APP_API_URL || ''; // 빈 문자열은 상대 경로를 의미합니다
+
 /**
  * 대시보드 메인 컴포넌트
  * 시스템의 주요 상태와 정보를 한눈에 볼 수 있는 화면
@@ -76,9 +80,8 @@ const Dashboard = ({ language }) => {
     const fetchWeatherData = async () => {
       setWeatherLoading(true);
       try {
-        // 백엔드 API 호출
-        const API_BASE_URL = 'http://localhost:8000';
-        const response = await axios.get(`${API_BASE_URL}/api/weather/`);
+        // 백엔드 API 호출 (수정된 URL)
+        const response = await axios.get(`${API_BASE_URL}/api/weather/current/`);
         
         if (response.data) {
           setWeatherData({
@@ -86,15 +89,13 @@ const Dashboard = ({ language }) => {
             timestamp: response.data.timestamp,
             current: {
               temperature: response.data.current.temperature,
-              feels_like: response.data.current.temperature - 3, // 체감온도 계산 (임의)
+              feels_like: response.data.current.temperature ? response.data.current.temperature - 3 : null, // 체감온도 계산 (임의)
               humidity: response.data.current.humidity,
               wind_speed: response.data.current.wind_speed,
               wind_direction: response.data.current.wind_direction,
               precipitation: response.data.current.precipitation,
-              weather_condition: response.data.current.precipitation_type || 'clear',
-              pressure: 1012, // 기본값
-              visibility: 10, // 기본값
-              uv_index: 3 // 기본값
+              weather_condition: response.data.current.precipitation_type || 'none',
+              visibility: response.data.current.visibility // 백엔드에서 제공하는 시정 값 사용
             },
             forecast: response.data.forecast || []
           });
@@ -102,6 +103,8 @@ const Dashboard = ({ language }) => {
         setWeatherLoading(false);
       } catch (error) {
         console.error('날씨 데이터를 불러오는 중 오류 발생:', error);
+        // 오류 시 null로 설정하여 UI에서 '데이터 없음' 표시
+        setWeatherData(null);
         setWeatherLoading(false);
       }
     };
@@ -120,9 +123,8 @@ const Dashboard = ({ language }) => {
     setWeatherLoading(true);
     
     try {
-      // 백엔드 API 호출
-      const API_BASE_URL = 'http://localhost:8000';
-      const response = await axios.get(`${API_BASE_URL}/api/weather/`);
+      // 백엔드 API 호출 (수정된 URL)
+      const response = await axios.get(`${API_BASE_URL}/api/weather/current/`);
       
       if (response.data) {
         setWeatherData({
@@ -130,15 +132,13 @@ const Dashboard = ({ language }) => {
           timestamp: response.data.timestamp,
           current: {
             temperature: response.data.current.temperature,
-            feels_like: response.data.current.temperature - 3, // 체감온도 계산 (임의)
+            feels_like: response.data.current.temperature ? response.data.current.temperature - 3 : null, // 체감온도 계산 (임의)
             humidity: response.data.current.humidity,
             wind_speed: response.data.current.wind_speed,
             wind_direction: response.data.current.wind_direction,
             precipitation: response.data.current.precipitation,
-            weather_condition: response.data.current.precipitation_type || 'clear',
-            pressure: 1012, // 기본값
-            visibility: 10, // 기본값
-            uv_index: 3 // 기본값
+            weather_condition: response.data.current.precipitation_type || 'none',
+            visibility: response.data.current.visibility // 백엔드에서 제공하는 시정 값 사용
           },
           forecast: response.data.forecast || []
         });
@@ -146,6 +146,8 @@ const Dashboard = ({ language }) => {
       }
     } catch (error) {
       console.error('날씨 데이터 수동 갱신 오류:', error);
+      // 오류 시 null로 설정하여 UI에서 '데이터 없음' 표시
+      setWeatherData(null);
     } finally {
       setWeatherLoading(false);
     }
@@ -155,9 +157,8 @@ const Dashboard = ({ language }) => {
   useEffect(() => {
     const fetchBirdActivity = async () => {
       try {
-        // 백엔드 API URL
-        const API_BASE_URL = 'http://localhost:8000';
-        const today = new Date().toISOString().split('T')[0]; // 오늘 날짜
+        // today 변수 정의 추가
+        const today = new Date().toISOString().split('T')[0]; // 오늘 날짜 (YYYY-MM-DD)
         
         // 바운딩 박스 데이터를 API에서 직접 가져오기 
         // (최근 5분 동안의 바운딩 박스 수를 카메라별로 계산 - 1분에서 5분으로 확장)
@@ -230,7 +231,7 @@ const Dashboard = ({ language }) => {
             count: item.count
           })));
         } else {
-          // API 응답이 없거나 유효하지 않은 경우 대체 방법으로 
+          // API 응답이 없거나 유효하지 않은 경우 으로 
           // 레이더 트랙 데이터 활용 (기존 로직)
           console.log('바운딩 박스 데이터를 가져오지 못했습니다. 레이더 데이터로 대체합니다.');
           const response = await axios.get(`${API_BASE_URL}/api/radar/track/`);
@@ -287,8 +288,7 @@ const Dashboard = ({ language }) => {
     setBirdActivityLoading(true);
     
     try {
-      // 백엔드 API URL
-      const API_BASE_URL = 'http://localhost:8000';
+      // today 변수 정의 추가
       const today = new Date().toISOString().split('T')[0]; // 오늘 날짜
       
       // 바운딩 박스 데이터 가져오기
@@ -357,8 +357,7 @@ const Dashboard = ({ language }) => {
   useEffect(() => {
     const updateCollisionRisks = async () => {
       try {
-        // 백엔드 API 호출
-        const API_BASE_URL = 'http://localhost:8000';
+        // today 변수 정의 추가
         const today = new Date().toISOString().split('T')[0]; // 오늘 날짜
         
         // 실제 DB에서 위험 알림 데이터 가져오기 
@@ -554,7 +553,6 @@ const Dashboard = ({ language }) => {
     
     try {
       // 백엔드 API 호출
-      const API_BASE_URL = 'http://localhost:8000';
       const today = new Date().toISOString().split('T')[0]; // 오늘 날짜
       
       // 실제 DB에서 위험 알림 데이터 가져오기
@@ -657,7 +655,6 @@ const Dashboard = ({ language }) => {
     const fetchSpeciesAndDirectionStats = async () => {
       try {
         setDailySpeciesLoading(true);
-        const API_BASE_URL = 'http://localhost:8000';
         const today = new Date().toISOString().split('T')[0]; // 오늘 날짜
         
         // 조류 종류별 통계 데이터 가져오기
@@ -796,7 +793,6 @@ const Dashboard = ({ language }) => {
     setDailySpeciesLoading(true);
     
     try {
-      const API_BASE_URL = 'http://localhost:8000';
       const today = new Date().toISOString().split('T')[0]; // 오늘 날짜
       
       // 조류 종류별 통계 데이터 가져오기
@@ -914,7 +910,6 @@ const Dashboard = ({ language }) => {
       try {
         setDailyCameraStatsLoading(true);
         // 백엔드 API URL
-        const API_BASE_URL = 'http://localhost:8000';
         const today = new Date().toISOString().split('T')[0]; // 오늘 날짜 (YYYY-MM-DD)
         
         // 오늘 하루 조류 인식 현황을 위한 DetectionInfo 데이터 가져오기
@@ -1018,7 +1013,6 @@ const Dashboard = ({ language }) => {
     
     try {
       // 백엔드 API URL
-      const API_BASE_URL = 'http://localhost:8000';
       const today = new Date().toISOString().split('T')[0]; // 오늘 날짜 (YYYY-MM-DD)
       
       // 오늘 하루 조류 인식 현황을 위한 DetectionInfo 데이터 가져오기

@@ -59,7 +59,7 @@ import {
 } from '../../api';
 
 // API 엔드포인트 설정
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.REACT_APP_API_URL || '';
 
 // TabPanel 컴포넌트
 function TabPanel(props) {

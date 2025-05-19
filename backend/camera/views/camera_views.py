@@ -6,9 +6,16 @@ from ..frame.camera_manager import CameraManager
 import time
 import numpy as np
 import cv2
-from ..models import Camera
+from ..models import Camera, DetectionVideo
 import threading
 import logging
+import os
+import datetime
+from django.utils import timezone
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
+from django.http import JsonResponse
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -156,9 +163,17 @@ def index(request):
             if camera_manager.get_camera_url(camera_id) is not None:
                 available_cameras[camera_id] = {"location": f"카메라 {camera_id}"}
     
+    # 카메라 ID를 숫자형으로 정렬 (문자열로 된 숫자도 올바르게 정렬)
+    sorted_camera_ids = sorted(available_cameras.keys(), key=lambda x: int(x) if str(x).isdigit() else x)
+    
+    # 정렬된 카메라 정보를 담을 새 딕셔너리
+    sorted_camera_info = {}
+    for camera_id in sorted_camera_ids:
+        sorted_camera_info[camera_id] = available_cameras[camera_id]
+    
     return render(request, 'detection/index.html', {
-        'camera_info': available_cameras,
-        'cameras': sorted(available_cameras.keys())
+        'camera_info': sorted_camera_info,
+        'cameras': sorted_camera_ids
     })
 
 def ptz_controller(request):
@@ -264,3 +279,61 @@ def generate_frames(camera):
     except Exception as e:
         print(f"프레임 생성 오류: {e}")
         pass
+
+def detection_videos_view(request):
+    """감지 영상 목록 페이지"""
+    # 필터 파라미터 가져오기
+    date_filter = request.GET.get('date')
+    camera_filter = request.GET.get('camera')
+    
+    # 기본 쿼리셋
+    videos_query = DetectionVideo.objects.all().order_by('-record_time')
+    
+    # 필터 적용
+    if date_filter:
+        # 날짜 형식 변환
+        try:
+            filter_date = datetime.datetime.strptime(date_filter, '%Y-%m-%d').date()
+            # 해당 날짜의 시작과 끝
+            date_start = datetime.datetime.combine(filter_date, datetime.time.min).replace(tzinfo=timezone.get_current_timezone())
+            date_end = datetime.datetime.combine(filter_date, datetime.time.max).replace(tzinfo=timezone.get_current_timezone())
+            videos_query = videos_query.filter(record_time__range=(date_start, date_end))
+        except ValueError:
+            pass  # 유효하지 않은 날짜 형식
+    
+    if camera_filter and camera_filter.isdigit():
+        videos_query = videos_query.filter(camera__camera_id=camera_filter)
+    
+    # 파일 경로 처리 (절대 경로에서 상대 URL 경로로 변환)
+    videos = []
+    for video in videos_query:
+        # 서버의 파일시스템 경로에서 웹 접근 가능한 URL로 변환
+        video_path = video.file_path
+        
+        # 파일 이름만 추출
+        if isinstance(video_path, str):
+            # 윈도우 경로에서 파일명만 추출
+            filename = os.path.basename(video_path)
+        else:
+            # Path 객체에서 파일명만 추출
+            filename = os.path.basename(str(video_path))
+        
+        # 새 URL 경로 생성 - /video_recordings/ 경로로 통일
+        video.file_path = f'/video_recordings/{filename}'
+        
+        # 파일이 실제로 존재하는지 확인 (디버깅용)
+        video_absolute_path = os.path.join(settings.BASE_DIR, 'video_recordings', filename)
+        if not os.path.exists(video_absolute_path):
+            print(f"경고: 비디오 파일이 존재하지 않습니다: {video_absolute_path}")
+        
+        videos.append(video)
+    
+    # 모든 카메라 정보
+    cameras = Camera.objects.all()
+    
+    return render(request, 'detection/detection_videos.html', {
+        'videos': videos,
+        'cameras': cameras,
+        'date_filter': date_filter,
+        'camera_filter': camera_filter
+    })

@@ -1342,7 +1342,7 @@ const MapView = ({
                                   fontSize: '0.85rem',
                                   letterSpacing: '0.5px'
                                 }}>
-                                  {`SG-${String(log.camera).padStart(2, '0')} - Anomaly Detected`}
+                                  {`SG-${String(log.camera).padStart(2, '0')}`}
                                 </Typography>
                                 <Typography sx={{ 
                                   color: '#00c5ff', 
@@ -1437,7 +1437,7 @@ const MapView = ({
                                   fontSize: '0.85rem',
                                   letterSpacing: '0.5px'
                                 }}>
-                                  {`SG-${String(log.camera).padStart(2, '0')} - Anomaly Detected`}
+                                  {`SG-${String(log.camera).padStart(2, '0')}`}
                                 </Typography>
                                 <Typography sx={{ 
                                   color: '#00c5ff', 

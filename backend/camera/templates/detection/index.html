@@ -1,1041 +1,1206 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>조류충돌방지시스템 - 모니터링 대시보드 (유지보수)</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <!-- jQuery와 Bootstrap JS 추가 -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/js/bootstrap.bundle.min.js"></script>
-    <style>
-        /* 기본 색상 정의 (간소화됨) */
-        :root {
-            --primary: #2c3e50;
-            --secondary: #566573;
-            --dark: #1c2833;
-            --light: #ecf0f1;
-            --danger: #c0392b;
-            --warning: #d35400;
-            --card-bg: #f8f9fa;
-            --header-bg: #34495e;
-        }
-        
-        /* 일관된 테마 스타일 */
-        body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background-color: #f5f5f5;
-            color: #333;
-            margin: 0;
-            padding: 0;
-        }
-        
-        .system-header {
-            background-color: #2c3e50;
-            color: white;
-            padding: 1rem 0;
-            margin-bottom: 0;
-        }
-        
-        .system-title {
-            font-weight: 600;
-            font-size: 1.4rem;
-            margin: 0;
-        }
-        
-        .system-subtitle {
-            font-weight: 300;
-            font-size: 0.9rem;
-            margin-top: 0.2rem;
-        }
-        
-        .nav-tabs {
-            background-color: #f8f9fa;
-            padding-top: 0.5rem;
-            border-bottom: 1px solid #dee2e6;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        
-        .nav-link {
-            color: #495057;
-            font-weight: 500;
-            padding: 0.7rem 1.5rem;
-            border-radius: 0.25rem 0.25rem 0 0;
-            transition: all 0.2s ease;
-        }
-        
-        .nav-link:hover {
-            background-color: rgba(13, 110, 253, 0.1);
-            color: #0d6efd;
-        }
-        
-        .nav-link.active {
-            font-weight: bold;
-            color: #0d6efd;
-            background-color: white;
-            border-color: #dee2e6 #dee2e6 #fff;
-            box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
-        }
-        
-        /* 헤더 단순화 */
-        .dashboard-header {
-            background: var(--header-bg);
-            color: white;
-            padding: 0.8rem 0;
-            margin-bottom: 1rem;
-        }
-        
-        /* 카메라 그리드 간격 축소 */
-        .camera-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            gap: 0.75rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        /* 카메라 카드 단순화 */
-        .camera-card {
-            background: var(--card-bg);
-            border-radius: 4px;
-            overflow: hidden;
-            border: 1px solid #ddd;
-        }
-        
-        .camera-header {
-            background: var(--primary);
-            color: white;
-            padding: 0.7rem 1rem;
-            font-weight: 500;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .camera-title {
-            display: flex;
-            align-items: center;
-        }
-        
-        .camera-title i {
-            margin-right: 8px;
-            font-size: 1rem;
-        }
-        
-        .camera-status {
-            display: flex;
-            align-items: center;
-            font-size: 0.85rem;
-            background: rgba(255,255,255,0.15);
-            padding: 3px 10px;
-            border-radius: 4px;
-        }
-        
-        .status-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-right: 6px;
-        }
-        
-        .status-online {
-            background-color: #2ecc71;
-        }
-        
-        .status-offline {
-            background-color: #e74c3c;
-        }
-        
-        /* 카메라 피드 단순화 */
-        .camera-feed {
-            position: relative;
-            overflow: hidden;
-            width: 100%;
-            padding-top: 56.25%; /* 16:9 비율 (9 / 16 = 0.5625 = 56.25%) */
-            background: #111;
-        }
-        
-        .camera-feed img {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        
-        /* 전체화면 버튼 단순화 */
-        .fullscreen-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(0,0,0,0.5);
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 5px 10px;
-            cursor: pointer;
-            opacity: 0.8;
-            z-index: 10;
-        }
-        
-        /* 전체화면 모달 */
-        .fullscreen-modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.9);
-            z-index: 1000;
-        }
-        
-        .fullscreen-content {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        
-        .fullscreen-image {
-            max-width: 90%;
-            max-height: 90%;
-            object-fit: contain;
-        }
-        
-        .close-fullscreen {
-            position: absolute;
-            top: 20px;
-            right: 30px;
-            color: white;
-            font-size: 30px;
-            font-weight: bold;
-            cursor: pointer;
-            z-index: 1001;
-        }
-        
-        .camera-info-fullscreen {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            color: white;
-            background: rgba(0,0,0,0.5);
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-        
-        /* 메타데이터 표시 단순화 */
-        .camera-meta {
-            padding: 0.6rem 1rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-top: 1px solid #eee;
-            background: #f8f9fa;
-        }
-        
-        .camera-info {
-            display: flex;
-            align-items: center;
-        }
-        
-        .info-item {
-            display: flex;
-            align-items: center;
-            margin-right: 16px;
-            font-size: 0.9rem;
-        }
-        
-        .info-item i {
-            margin-right: 6px;
-            color: var(--primary);
-        }
-        
-        /* 로딩 상태 단순화 */
-        .loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.7);
-            color: white;
-            padding: 0.8rem 1.5rem;
-            border-radius: 4px;
-            display: none;
-            font-weight: 500;
-            text-align: center;
-        }
-        
-        .loading i {
-            display: block;
-            font-size: 1.5rem;
-            margin-bottom: 0.4rem;
-        }
-        
-        /* 로딩 아이콘 애니메이션 제거 */
-        .fa-circle-notch:before {
-            content: "\f1ce";
-        }
-        
-        /* 푸터 단순화 */
-        .footer {
-            background: var(--dark);
-            color: var(--light);
-            padding: 1rem 0;
-            text-align: center;
-            margin-top: 1.5rem;
-            font-size: 0.9rem;
-        }
-        
-        /* YOLO 설정 패널 단순화 */
-        .card-header.bg-primary {
-            background-color: var(--primary) !important;
-        }
-        
-        /* 미니 컨트롤 추가 */
-        .mini-controls {
-            margin-bottom: 1rem;
-            background: #e9ecef;
-            padding: 0.5rem;
-            border-radius: 4px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        /* 반응형 조정 */
-        @media (max-width: 768px) {
-            .camera-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .camera-feed {
-                height: 280px;
-            }
-        }
-    </style>
-</head>
-<body>
-    <!-- 헤더 -->
-    <header class="dashboard-header">
-        <div class="container">
-            <h1 class="system-title">
-                <i class="fas fa-dove"></i> 조류충돌방지시스템
-            </h1>
-            <p class="system-subtitle">AI 기반 실시간 모니터링 대시보드</p>
-        </div>
-    </header>
+{% extends "detection/base_layout.html" %}
+
+{% block title %}조류충돌방지시스템 - 모니터링 대시보드{% endblock %}
+{% block subtitle %}AI 기반 실시간 모니터링 대시보드{% endblock %}
+
+{% block styles %}
+<style>
+    /* 기본 색상 정의 (간소화됨) */
+    :root {
+        --primary: #2c3e50;
+        --secondary: #566573;
+        --dark: #1c2833;
+        --light: #ecf0f1;
+        --danger: #c0392b;
+        --warning: #d35400;
+        --card-bg: #f8f9fa;
+        --header-bg: #34495e;
+    }
     
-    <!-- 메인 컨텐츠 -->
-    <div class="container">
-        <!-- 탭 네비게이션 -->
-        <ul class="nav nav-tabs mb-3">
-            <li class="nav-item">
-                <a class="nav-link active" href="/">메인 대시보드</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/camera-management/">카메라 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/db-management/">데이터베이스 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/model-management/">모델 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/speaker-management/">스피커 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/azimuth-setting/">가드존 설정</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/ptz-controller/">PTZ 컨트롤러</a>
-            </li>
-        </ul>
+    /* 일관된 테마 스타일 */
+    body {
+        font-family: 'Segoe UI', Arial, sans-serif;
+        background-color: #f5f5f5;
+        color: #333;
+        margin: 0;
+        padding: 0;
+    }
+    
+    .system-header {
+        background-color: #2c3e50;
+        color: white;
+        padding: 1rem 0;
+        margin-bottom: 0;
+    }
+    
+    .system-title {
+        font-weight: 600;
+        font-size: 1.4rem;
+        margin: 0;
+    }
+    
+    .system-subtitle {
+        font-weight: 300;
+        font-size: 0.9rem;
+        margin-top: 0.2rem;
+    }
+    
+    .nav-tabs {
+        background-color: #f8f9fa;
+        padding-top: 0.5rem;
+        border-bottom: 1px solid #dee2e6;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    .nav-link {
+        color: #495057;
+        font-weight: 500;
+        padding: 0.7rem 1.5rem;
+        border-radius: 0.25rem 0.25rem 0 0;
+        transition: all 0.2s ease;
+    }
+    
+    .nav-link:hover {
+        background-color: rgba(13, 110, 253, 0.1);
+        color: #0d6efd;
+    }
+    
+    .nav-link.active {
+        font-weight: bold;
+        color: #0d6efd;
+        background-color: white;
+        border-color: #dee2e6 #dee2e6 #fff;
+        box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
+    }
+    
+    /* 헤더 단순화 */
+    .dashboard-header {
+        background: var(--header-bg);
+        color: white;
+        padding: 0.8rem 0;
+        margin-bottom: 1rem;
+    }
+    
+    /* 카메라 그리드 2x2로 변경 */
+    .camera-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: repeat(2, auto);
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    /* 카메라 카드 크기 증가 및 높이 확장 */
+    .camera-card {
+        background: var(--card-bg);
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #ddd;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        aspect-ratio: 16/11; /* 높이 조금 줄임 */
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .camera-header {
+        background: var(--primary);
+        color: white;
+        padding: 0.5rem 1rem; /* 헤더 패딩 축소 */
+        font-weight: 500;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .camera-title {
+        display: flex;
+        align-items: center;
+    }
+    
+    .camera-title i {
+        margin-right: 8px;
+        font-size: 1rem;
+    }
+    
+    .camera-status {
+        display: flex;
+        align-items: center;
+        font-size: 0.85rem;
+        background: rgba(255,255,255,0.15);
+        padding: 3px 10px;
+        border-radius: 4px;
+    }
+    
+    .status-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 6px;
+    }
+    
+    .status-online {
+        background-color: #2ecc71;
+    }
+    
+    .status-offline {
+        background-color: #e74c3c;
+    }
+    
+    /* 카메라 피드 크기 증가 */
+    .camera-feed {
+        position: relative;
+        overflow: hidden;
+        width: 100%;
+        flex: 1;
+        background: #111;
+        min-height: 280px; /* 최소 높이 조금 줄임 */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .camera-feed img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain; /* 이미지가 잘리지 않도록 contain으로 변경 */
+        background-color: #111; /* 남는 공간 배경색 */
+    }
+    
+    /* 전체화면 버튼 단순화 */
+    .fullscreen-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(0,0,0,0.5);
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 5px 10px;
+        cursor: pointer;
+        opacity: 0.8;
+        z-index: 10;
+    }
+    
+    /* 전체화면 모달 */
+    .fullscreen-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.9);
+        z-index: 1000;
+    }
+    
+    .fullscreen-content {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .fullscreen-image {
+        max-width: 90%;
+        max-height: 90%;
+        object-fit: contain;
+        transition: opacity 0.1s ease-in-out; /* 부드러운 전환 효과 추가 */
+    }
+    
+    .close-fullscreen {
+        position: absolute;
+        top: 20px;
+        right: 30px;
+        color: white;
+        font-size: 30px;
+        font-weight: bold;
+        cursor: pointer;
+        z-index: 1001;
+    }
+    
+    .camera-info-fullscreen {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        color: white;
+        background: rgba(0,0,0,0.5);
+        padding: 10px;
+        border-radius: 5px;
+        font-size: 14px;
+    }
+    
+    /* 메타데이터 표시 단순화 */
+    .camera-meta {
+        padding: 0.4rem 0.8rem; /* 패딩 축소 */
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-top: 1px solid #eee;
+        background: #f8f9fa;
+    }
+    
+    .camera-info {
+        display: flex;
+        align-items: center;
+    }
+    
+    .info-item {
+        display: flex;
+        align-items: center;
+        margin-right: 16px;
+        font-size: 0.9rem;
+    }
+    
+    .info-item i {
+        margin-right: 6px;
+        color: var(--primary);
+    }
+    
+    /* 로딩 상태 단순화 */
+    .loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0,0,0,0.7);
+        color: white;
+        padding: 0.8rem 1.5rem;
+        border-radius: 4px;
+        display: none;
+        font-weight: 500;
+        text-align: center;
+    }
+    
+    .loading i {
+        display: block;
+        font-size: 1.5rem;
+        margin-bottom: 0.4rem;
+    }
+    
+    /* 푸터 단순화 */
+    .footer {
+        background: var(--dark);
+        color: var(--light);
+        padding: 1rem 0;
+        text-align: center;
+        margin-top: 1.5rem;
+        font-size: 0.9rem;
+    }
+    
+    /* YOLO 설정 패널 개선 */
+    .card-header.bg-primary {
+        background-color: var(--primary) !important;
+    }
+    
+    /* Confidence Threshold 스타일 개선 */
+    .conf-threshold-label {
+        font-size: 1.1rem;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+    }
+    
+    .conf-threshold-label i {
+        margin-right: 0.5rem;
+        color: var(--primary);
+    }
+    
+    .conf-value {
+        background-color: #3498db;
+        color: white;
+        padding: 0.3rem 0.6rem;
+        border-radius: 4px;
+        font-weight: 600;
+        margin-left: 0.5rem;
+        display: inline-block;
+        min-width: 3rem;
+        text-align: center;
+    }
+    
+    .form-control-range {
+        width: 100%;
+        height: 1.5rem;
+        padding: 0;
+        background-color: transparent;
+    }
+    
+    .conf-description {
+        font-size: 0.9rem;
+        margin-top: 0.5rem;
+        color: #555;
+        background-color: #f8f9fa;
+        padding: 0.5rem;
+        border-radius: 4px;
+        border-left: 3px solid #3498db;
+    }
+    
+    /* 상태 텍스트 개선 */
+    .status-display {
+        font-size: 1.1rem;
+        font-weight: 500;
+        margin-bottom: 1rem;
+        background-color: rgba(52, 152, 219, 0.1);
+        padding: 0.8rem;
+        border-radius: 6px;
+        border-left: 4px solid #3498db;
+    }
+    
+    .status-display i {
+        margin-right: 0.5rem;
+        color: #3498db;
+    }
+    
+    .badge {
+        padding: 0.5rem 0.7rem;
+        margin-left: 0.5rem;
+        border-radius: 6px;
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+    
+    .badge-success {
+        background-color: #27ae60;
+        color: white;
+    }
+    
+    .badge-danger {
+        background-color: #e74c3c;
+        color: white;
+    }
+    
+    .badge-primary {
+        background-color: #3498db;
+        color: white;
+    }
+    
+    /* 알림 스타일 개선 */
+    .alert-notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        min-width: 300px;
+        padding: 1rem;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    
+    .alert-notification i {
+        margin-right: 0.5rem;
+        font-size: 1.2rem;
+    }
+    
+    .alert-notification .notification-close {
+        cursor: pointer;
+        font-size: 1.2rem;
+        opacity: 0.7;
+        transition: opacity 0.2s;
+    }
+    
+    .alert-notification .notification-close:hover {
+        opacity: 1;
+    }
+    
+    /* PTZ 오버레이 스타일 */
+    .ptz-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.6);
+        z-index: 50;
+        display: none;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .ptz-overlay-header {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        background-color: rgba(44, 62, 80, 0.8);
+        color: white;
+        padding: 0.5rem 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .ptz-title {
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+    
+    .ptz-close-btn {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 1.5rem;
+        cursor: pointer;
+        line-height: 1;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .ptz-controls-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 2rem;
+        width: 100%;
+    }
+    
+    .ptz-direction-controls {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .ptz-middle-row {
+        display: flex;
+        gap: 2rem;
+    }
+    
+    .ptz-zoom-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .ptz-btn {
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: rgba(255, 255, 255, 0.2);
+        border: 2px solid rgba(255, 255, 255, 0.8);
+        color: white;
+        font-size: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .ptz-btn:hover {
+        background-color: rgba(255, 255, 255, 0.3);
+        transform: scale(1.1);
+    }
+    
+    .ptz-btn:active {
+        background-color: rgba(52, 152, 219, 0.5);
+        transform: scale(0.95);
+    }
+    
+    .ptz-zoom {
+        width: auto;
+        height: 2.5rem;
+        border-radius: 5px;
+        padding: 0 1rem;
+    }
+    
+    .ptz-status-panel {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        background-color: rgba(44, 62, 80, 0.8);
+        color: white;
+        padding: 0.5rem 1rem;
+    }
+    
+    .ptz-status-info {
+        font-size: 0.9rem;
+    }
+    
+    /* 반응형 조정 */
+    @media (max-width: 768px) {
+        .camera-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .ptz-controls-container {
+            flex-direction: column;
+            gap: 1rem;
+        }
+    }
+</style>
+{% endblock %}
 
-        <!-- 미니 컨트롤 추가 -->
-        <div class="mini-controls">
-            <div>
-                <span><i class="fas fa-video"></i> 카메라 상태: </span>
-                <span class="badge badge-success">온라인: <span id="onlineCount">0</span></span>
-                <span class="badge badge-danger ml-2">오프라인: <span id="offlineCount">0</span></span>
+{% block content %}
+<div class="container">
+    <!-- 카메라 상태 표시 -->
+    <div class="status-display">
+        <i class="fas fa-video"></i> 카메라 상태:
+        <span class="badge badge-success">온라인: <span id="onlineCount">0</span></span>
+        <span class="badge badge-danger">오프라인: <span id="offlineCount">0</span></span>
+    </div>
+
+    <!-- 카메라 그리드 (새로고침 버튼 제거) -->
+    <div class="camera-grid">
+        {% for camera_id, info in camera_info.items %}
+        <div class="camera-card">
+            <div class="camera-header">
+                <div class="camera-title">
+                    <i class="fas fa-video"></i>
+                    <span>카메라 {{ camera_id }} - {{ info.location }}</span>
+                </div>
+                <div class="camera-status" id="status{{ camera_id }}">
+                    <div class="status-indicator status-online"></div>
+                    <span>온라인</span>
+                </div>
             </div>
-            <div>
-                <button class="btn btn-sm btn-outline-secondary" id="refreshAllBtn">
-                    <i class="fas fa-sync-alt"></i> 모든 카메라 새로고침
+            <div class="camera-feed" id="camera{{ camera_id }}Container">
+                <img id="camera{{ camera_id }}Image" src="{% url 'camera_feed' camera_id=camera_id %}" alt="카메라 {{ camera_id }} 피드">
+                <button class="fullscreen-btn" onclick="openFullscreen('{{ camera_id }}')">
+                    <i class="fas fa-expand"></i>
                 </button>
-            </div>
-        </div>
-
-        <!-- YOLO 설정 컨트롤 패널 -->
-        <div class="card mb-3">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">
-                    <i class="fas fa-cog"></i> YOLO 모델 설정
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="form-group">
-                            <label for="confThreshold">
-                                <i class="fas fa-percentage"></i> Confidence Threshold
-                                <span id="confValue" class="badge badge-primary">0.25</span>
-                            </label>
-                            <input type="range" class="form-control-range" id="confThreshold" 
-                                   min="0.05" max="0.95" step="0.05" value="0.25">
-                            <small class="form-text text-muted">
-                                낮은 값 (0.05): 더 많은 객체 감지, 오탐지 증가<br>
-                                높은 값 (0.95): 확실한 객체만 감지, 탐지율 감소
-                            </small>
-                        </div>
+                <div class="loading" id="loading{{ camera_id }}">
+                    <i class="fas fa-sync-alt"></i>
+                    <div>스트림 연결 중...</div>
+                </div>
+                
+                <!-- PTZ 제어 오버레이 -->
+                <div class="ptz-overlay" id="ptzOverlay{{ camera_id }}">
+                    <div class="ptz-overlay-header">
+                        <div class="ptz-title">카메라 PTZ 제어: {{ camera_id }}</div>
+                        <button class="ptz-close-btn" onclick="togglePTZOverlay('{{ camera_id }}')">×</button>
                     </div>
-                    <div class="col-md-6">
-                        <div class="card bg-light">
-                            <div class="card-body">
-                                <h6 class="card-title">모델 정보</h6>
-                                <div id="modelInfo">
-                                    <p><i class="fas fa-sync-alt"></i> 모델 정보 로딩 중...</p>
-                                </div>
+                    <div class="ptz-controls-container">
+                        <div class="ptz-direction-controls">
+                            <button class="ptz-btn ptz-up" data-camera="{{ camera_id }}" data-direction="UP">
+                                <i class="fas fa-chevron-up"></i>
+                            </button>
+                            <div class="ptz-middle-row">
+                                <button class="ptz-btn ptz-left" data-camera="{{ camera_id }}" data-direction="LEFT">
+                                    <i class="fas fa-chevron-left"></i>
+                                </button>
+                                <button class="ptz-btn ptz-right" data-camera="{{ camera_id }}" data-direction="RIGHT">
+                                    <i class="fas fa-chevron-right"></i>
+                                </button>
                             </div>
+                            <button class="ptz-btn ptz-down" data-camera="{{ camera_id }}" data-direction="DOWN">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                        </div>
+                        <div class="ptz-zoom-controls">
+                            <button class="ptz-btn ptz-zoom" data-camera="{{ camera_id }}" data-direction="ZOOM_IN">
+                                <i class="fas fa-search-plus"></i>
+                            </button>
+                            <button class="ptz-btn ptz-zoom" data-camera="{{ camera_id }}" data-direction="ZOOM_OUT">
+                                <i class="fas fa-search-minus"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="ptz-status-panel">
+                        <div class="ptz-status-info">
+                            <div>상태: <span id="ptzStatus{{ camera_id }}">대기 중</span></div>
+                            <div>위치: <span id="ptzPosition{{ camera_id }}">정보 가져오는 중...</span></div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- 카메라 그리드 -->
-        <div class="camera-grid">
-            {% for camera_id, info in camera_info.items %}
-            <div class="camera-card">
-                <div class="camera-header">
-                    <div class="camera-title">
-                        <i class="fas fa-video"></i>
-                        <span>카메라 {{ camera_id }} - {{ info.location }}</span>
+            <div class="camera-meta">
+                <div class="camera-info">
+                    <div class="info-item">
+                        <i class="fas fa-clock"></i>
                     </div>
-                    <div class="camera-status" id="status{{ camera_id }}">
-                        <div class="status-indicator status-online"></div>
-                        <span>온라인</span>
-                    </div>
+                    <button class="btn btn-sm btn-outline-secondary ptz-toggle-btn" onclick="togglePTZOverlay('{{ camera_id }}')">
+                        <i class="fas fa-video"></i> PTZ
+                    </button>
                 </div>
-                <div class="camera-feed" id="camera{{ camera_id }}Container">
-                    <img id="camera{{ camera_id }}Image" src="{% url 'camera_feed' camera_id=camera_id %}" alt="카메라 {{ camera_id }} 피드">
-                    <button class="fullscreen-btn" onclick="openFullscreen({{ camera_id }})">
+                <div>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="openFullscreen('{{ camera_id }}')">
                         <i class="fas fa-expand"></i>
                     </button>
-                    <div class="loading" id="loading{{ camera_id }}">
-                        <i class="fas fa-sync-alt"></i>
-                        <div>스트림 연결 중...</div>
-                    </div>
-                </div>
-                <div class="camera-meta">
-                    <div class="camera-info">
-                        <div class="info-item">
-                            <i class="fas fa-clock"></i>
-                        </div>
-                        <button class="btn btn-sm btn-outline-secondary ptz-control-btn" data-id="{{ camera_id }}">
-                            <i class="fas fa-video"></i> PTZ
-                        </button>
-                    </div>
-                    <div>
-                        <button class="btn btn-sm btn-outline-primary" onclick="refreshCamera({{ camera_id }})">
-                            <i class="fas fa-sync-alt"></i> 새로고침
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="openFullscreen({{ camera_id }})">
-                            <i class="fas fa-expand"></i>
-                        </button>
-                    </div>
                 </div>
             </div>
-            {% endfor %}
         </div>
+        {% endfor %}
     </div>
     
-    <!-- 전체화면 모달 -->
-    <div id="fullscreenModal" class="fullscreen-modal">
-        <span class="close-fullscreen" onclick="closeFullscreen()">&times;</span>
-        <div class="fullscreen-content">
-            <img id="fullscreenImage" class="fullscreen-image" src="" alt="전체화면 카메라">
-            <div id="cameraInfoFullscreen" class="camera-info-fullscreen">
-                <div id="cameraIdFullscreen"></div>
-                <div id="cameraSensorFullscreen"></div>
+    <!-- YOLO 설정 패널 (카메라 그리드 아래로 이동) -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-cog"></i> YOLO 모델 설정
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="confThreshold" class="conf-threshold-label">
+                            <i class="fas fa-percentage"></i> Confidence Threshold
+                            <span id="confValue" class="conf-value">0.25</span>
+                        </label>
+                        <input type="range" class="form-control-range" id="confThreshold" 
+                               min="0.05" max="0.95" step="0.05" value="0.25">
+                        <div class="conf-description">
+                            <div><strong>낮은 값 (0.05):</strong> 더 많은 객체 감지, 오탐지 증가</div>
+                            <div><strong>높은 값 (0.95):</strong> 확실한 객체만 감지, 탐지율 감소</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title">모델 정보</h6>
+                            <div id="modelInfo">
+                                <p><i class="fas fa-sync-alt"></i> 모델 정보 로딩 중...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
+</div>
+
+<!-- 전체화면 모달 -->
+<div id="fullscreenModal" class="fullscreen-modal">
+    <span class="close-fullscreen" onclick="closeFullscreen()">&times;</span>
+    <div class="fullscreen-content">
+        <img id="fullscreenImage" class="fullscreen-image" src="" alt="전체화면 카메라">
+        <div id="cameraInfoFullscreen" class="camera-info-fullscreen">
+            <div id="cameraIdFullscreen"></div>
+            <div id="cameraSensorFullscreen"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 푸터 -->
+<footer class="footer">
+    <div class="container">
+        <div>AI Anti-Collision System © 2024 조류충돌방지시스템</div>
+    </div>
+</footer>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 전역 변수
+    let currentFullscreenCamera = null;
+    let fullscreenUpdateInterval = null;
+    let activePTZCamera = null;
+    let ptzPositionTimers = {};
+    let preloadedImage = new Image(); // 프리로딩을 위한 이미지 객체 추가
     
-    <!-- 푸터 -->
-    <footer class="footer">
-        <div class="container">
-            <div>AI Anti-Collision System © 2024 조류충돌방지시스템</div>
-        </div>
-    </footer>
-
-    <!-- PTZ 제어 모달 -->
-    <div class="modal fade" id="ptzControlModal" tabindex="-1" aria-labelledby="ptzControlModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="ptzControlModalLabel">카메라 PTZ 제어</h5>
-                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
-                </div>
-                <div class="modal-body">
-                    <div class="row mb-3">
-                        <div class="col-12 text-center">
-                            <h6 id="ptzCameraInfo"></h6>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="ptz-controls text-center">
-                                <div class="mb-3">
-                                    <button class="btn btn-outline-primary ptz-btn" data-direction="UP">
-                                        <i class="fas fa-chevron-up"></i>
-                                    </button>
-                                </div>
-                                <div class="d-flex justify-content-center mb-3">
-                                    <button class="btn btn-outline-primary ptz-btn mr-3" data-direction="LEFT">
-                                        <i class="fas fa-chevron-left"></i>
-                                    </button>
-                                    <button class="btn btn-outline-primary ptz-btn ml-3" data-direction="RIGHT">
-                                        <i class="fas fa-chevron-right"></i>
-                                    </button>
-                                </div>
-                                <div>
-                                    <button class="btn btn-outline-primary ptz-btn" data-direction="DOWN">
-                                        <i class="fas fa-chevron-down"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="zoom-controls text-center">
-                                <div class="mb-3">
-                                    <button class="btn btn-outline-primary ptz-btn" data-direction="ZOOM_IN">
-                                        <i class="fas fa-search-plus"></i> 확대
-                                    </button>
-                                </div>
-                                <div class="mb-3">
-                                    <button class="btn btn-outline-primary ptz-btn" data-direction="ZOOM_OUT">
-                                        <i class="fas fa-search-minus"></i> 축소
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="ptz-status mt-3">
-                                <div class="alert alert-info">
-                                    <div>상태: <span id="ptzStatus">대기 중</span></div>
-                                    <div>위치: <span id="ptzPosition">정보 없음</span></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">닫기</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // 전역 변수 선언
-        let currentFullscreenCamera = null;
-        let fullscreenUpdateInterval = null;
-        let currentPtzCameraId = null;  // PTZ 관련 변수 추가
-        let positionUpdateTimer = null; // PTZ 관련 변수 추가
+    // 전체화면 관련 함수들
+    function openFullscreen(cameraId) {
+        currentFullscreenCamera = cameraId;
         
-        // 전체화면 관련 함수들
-        function openFullscreen(cameraId) {
-            currentFullscreenCamera = cameraId;
-            
-            const modal = document.getElementById('fullscreenModal');
-            const fullscreenImage = document.getElementById('fullscreenImage');
-            const cameraIdElement = document.getElementById('cameraIdFullscreen');
-            
-            const imgId = 'camera' + cameraId + 'Image';
-            let originalImage = document.getElementById(imgId);
-            
-            if (originalImage) {
-                // 원본 이미지의 소스를 그대로 사용 (추가 매개변수 없이)
-                fullscreenImage.src = originalImage.src;
-            } else {
-                const containerEl = document.getElementById('camera' + cameraId + 'Container');
-                if (containerEl) {
-                    const imgInContainer = containerEl.querySelector('img');
-                    if (imgInContainer) {
-                        fullscreenImage.src = imgInContainer.src;
-                    }
+        const modal = document.getElementById('fullscreenModal');
+        const fullscreenImage = document.getElementById('fullscreenImage');
+        const cameraIdElement = document.getElementById('cameraIdFullscreen');
+        
+        const imgId = 'camera' + cameraId + 'Image';
+        let originalImage = document.getElementById(imgId);
+        
+        if (originalImage) {
+            // 원본 이미지의 소스를 그대로 사용
+            fullscreenImage.src = originalImage.src;
+        } else {
+            const containerEl = document.getElementById('camera' + cameraId + 'Container');
+            if (containerEl) {
+                const imgInContainer = containerEl.querySelector('img');
+                if (imgInContainer) {
+                    fullscreenImage.src = imgInContainer.src;
                 }
             }
-            
-            cameraIdElement.textContent = '카메라 ' + cameraId;
-            modal.style.display = 'block';
-            
-            if (fullscreenUpdateInterval) {
-                clearInterval(fullscreenUpdateInterval);
-            }
-            // 업데이트 주기를 100ms로 단축 (1000ms → 100ms)
-            fullscreenUpdateInterval = setInterval(function() {
-                updateFullscreenImage(cameraId);
-            }, 100);
         }
         
-        function updateFullscreenImage(cameraId) {
-            if (cameraId === undefined) {
-                cameraId = currentFullscreenCamera;
-            }
+        cameraIdElement.textContent = '카메라 ' + cameraId;
+        modal.style.display = 'block';
+        
+        if (fullscreenUpdateInterval) {
+            clearInterval(fullscreenUpdateInterval);
+        }
+        
+        // 첫 번째 이미지 미리 로드 시작
+        preloadNextImage(cameraId);
+        
+        // 업데이트 주기를 100ms로 설정 (기존 500ms에서 더 빠르게)
+        fullscreenUpdateInterval = setInterval(function() {
+            updateFullscreenImage(cameraId);
+        }, 100);
+    }
+    
+    // 다음 이미지 미리 로드 함수
+    function preloadNextImage(cameraId) {
+        if (cameraId === null) return;
+        
+        const imgId = 'camera' + cameraId + 'Image';
+        const originalImage = document.getElementById(imgId);
+        
+        if (originalImage) {
+            const timestamp = new Date().getTime();
+            const baseUrl = originalImage.src.split('?')[0];
+            preloadedImage.src = baseUrl + '?t=' + timestamp;
+        }
+    }
+    
+    function updateFullscreenImage(cameraId) {
+        if (cameraId === undefined) {
+            cameraId = currentFullscreenCamera;
+        }
+        
+        if (cameraId === null) return;
+        
+        const fullscreenImage = document.getElementById('fullscreenImage');
+        
+        // 미리 로드된 이미지가 준비되었으면 사용
+        if (preloadedImage.complete && preloadedImage.naturalWidth !== 0) {
+            fullscreenImage.src = preloadedImage.src;
             
-            if (cameraId === null) return;
-            
-            const fullscreenImage = document.getElementById('fullscreenImage');
+            // 다음 이미지 미리 로드 시작
+            preloadNextImage(cameraId);
+        } else {
+            // 미리 로드된 이미지가 준비되지 않았으면 일반적인 방법으로 업데이트
             const imgId = 'camera' + cameraId + 'Image';
             const originalImage = document.getElementById(imgId);
             
             if (originalImage) {
-                // 원본 이미지 소스 그대로 복사 (타임스탬프 없이)
-                fullscreenImage.src = originalImage.src;
+                const timestamp = new Date().getTime();
+                const baseUrl = originalImage.src.split('?')[0];
+                fullscreenImage.src = baseUrl + '?t=' + timestamp;
             }
         }
+    }
+    
+    function closeFullscreen() {
+        const modal = document.getElementById('fullscreenModal');
+        modal.style.display = 'none';
         
-        function closeFullscreen() {
-            const modal = document.getElementById('fullscreenModal');
-            modal.style.display = 'none';
-            
-            // 업데이트 인터벌 정리
-            if (fullscreenUpdateInterval) {
-                clearInterval(fullscreenUpdateInterval);
-                fullscreenUpdateInterval = null;
+        // 업데이트 인터벌 정리
+        if (fullscreenUpdateInterval) {
+            clearInterval(fullscreenUpdateInterval);
+            fullscreenUpdateInterval = null;
+        }
+        
+        // 프리로드 이미지 정리
+        preloadedImage.src = '';
+        
+        currentFullscreenCamera = null;
+    }
+    
+    // PTZ 제어 오버레이 토글
+    function togglePTZOverlay(cameraId) {
+        const overlay = document.getElementById('ptzOverlay' + cameraId);
+        
+        if (overlay.style.display === 'flex') {
+            // 오버레이 닫기
+            overlay.style.display = 'none';
+            stopPTZPositionUpdates(cameraId);
+            activePTZCamera = null;
+        } else {
+            // 이미 열려있는 다른 오버레이가 있으면 닫기
+            if (activePTZCamera && activePTZCamera !== cameraId) {
+                document.getElementById('ptzOverlay' + activePTZCamera).style.display = 'none';
+                stopPTZPositionUpdates(activePTZCamera);
             }
             
-            currentFullscreenCamera = null;
+            // 오버레이 열기
+            overlay.style.display = 'flex';
+            activePTZCamera = cameraId;
+            getPTZPosition(cameraId);
+        }
+    }
+    
+    // PTZ 위치 정보 가져오기
+    function getPTZPosition(cameraId) {
+        // 기존 타이머가 있으면 정리
+        if (ptzPositionTimers[cameraId]) {
+            clearInterval(ptzPositionTimers[cameraId]);
         }
         
-        // 카메라 새로고침 함수
-        function refreshCamera(cameraId) {
-            const img = document.getElementById('camera' + cameraId + 'Image');
-            const loading = document.getElementById('loading' + cameraId);
-            
-            loading.style.display = 'block';
-            // Django 템플릿 태그를 사용하여 URL 생성
-            const baseUrl = "{% url 'camera_feed' camera_id=1 %}".replace('1', cameraId);
-            img.src = baseUrl + '?refresh=' + new Date().getTime();
-        }
-        
-        // 모든 카메라 새로고침
-        function refreshAllCameras() {
-            const cameras = document.querySelectorAll('.camera-card');
-            cameras.forEach(card => {
-                const cameraId = card.querySelector('.camera-title span').textContent.split(' ')[1];
-                refreshCamera(cameraId);
-            });
-        }
-        
-        // PTZ 위치 정보 가져오기 함수
-        function getPtzPosition(cameraId) {
-            fetch(`/api/ptz/position/${cameraId}/`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        // 위치 정보 표시
-                        const pos = data.position;
-                        let posText = '';
-                        
-                        if (pos.pan !== undefined && pos.tilt !== undefined) {
-                            posText += `Pan: ${pos.pan.toFixed(2)}, Tilt: ${pos.tilt.toFixed(2)}`;
-                        }
-                        
-                        if (pos.zoom !== undefined) {
-                            posText += `, Zoom: ${pos.zoom.toFixed(2)}`;
-                        }
-                        
-                        document.getElementById('ptzPosition').textContent = posText || '정보 없음';
-                        
-                        // 상태 업데이트
-                        document.getElementById('ptzStatus').textContent = data.is_moving ? '이동 중' : '대기 중';
-                        
-                        // 위치 정보 주기적 업데이트
-                        if (!positionUpdateTimer) {
-                            positionUpdateTimer = setInterval(function() {
-                                if (currentPtzCameraId) {
-                                    getPtzPosition(currentPtzCameraId);
-                                }
-                            }, 1000); // 1초마다 업데이트
-                        }
-                    } else {
-                        document.getElementById('ptzPosition').textContent = '정보 없음';
-                        document.getElementById('ptzStatus').textContent = '오류';
-                        showNotification('위치 정보를 가져올 수 없습니다: ' + data.message, 'error');
-                    }
-                })
-                .catch(error => {
-                    document.getElementById('ptzPosition').textContent = '정보 없음';
-                    document.getElementById('ptzStatus').textContent = '오류';
-                    showNotification('위치 정보를 가져오는 중 오류가 발생했습니다: ' + error.message, 'error');
-                });
-        }
-        
-        // PTZ 제어 함수
-        function controlPtz(cameraId, direction, isContinuous) {
-            fetch('/api/ptz/control/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    camera_id: cameraId,
-                    direction: direction,
-                    is_continuous: isContinuous,
-                    speed: 0.7
-                })
-            })
+        // 위치 정보 요청
+        fetch(`/api/ptz/position/${cameraId}/`)
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    document.getElementById('ptzStatus').textContent = data.is_moving ? '이동 중' : '대기 중';
-                    // isContinuous가 false일 때는 메시지 표시 안 함 (정지 명령)
-                    if (isContinuous) {
-                        showNotification(data.message, 'success');
-                    }
+                    // 위치 정보 표시
+                    updatePTZPosition(cameraId, data);
+                    
+                    // 주기적 업데이트 설정
+                    ptzPositionTimers[cameraId] = setInterval(() => {
+                        fetch(`/api/ptz/position/${cameraId}/`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.status === 'success') {
+                                    updatePTZPosition(cameraId, data);
+                                }
+                            })
+                            .catch(error => {
+                                console.error("PTZ 위치 정보 가져오기 오류:", error);
+                            });
+                    }, 1000);
                 } else {
-                    document.getElementById('ptzStatus').textContent = '오류';
-                    showNotification('PTZ 제어 실패: ' + data.message, 'error');
+                    document.getElementById('ptzStatus' + cameraId).textContent = '오류';
+                    document.getElementById('ptzPosition' + cameraId).textContent = '정보 없음';
                 }
             })
             .catch(error => {
-                document.getElementById('ptzStatus').textContent = '오류';
-                showNotification('PTZ 제어 중 오류가 발생했습니다: ' + error.message, 'error');
+                document.getElementById('ptzStatus' + cameraId).textContent = '오류';
+                document.getElementById('ptzPosition' + cameraId).textContent = '정보 없음';
+                console.error("PTZ 위치 정보 가져오기 오류:", error);
             });
+    }
+    
+    // PTZ 위치 정보 업데이트
+    function updatePTZPosition(cameraId, data) {
+        const statusEl = document.getElementById('ptzStatus' + cameraId);
+        const positionEl = document.getElementById('ptzPosition' + cameraId);
+        
+        statusEl.textContent = data.is_moving ? '이동 중' : '대기 중';
+        
+        const pos = data.position;
+        let posText = '';
+        
+        if (pos.pan !== undefined && pos.tilt !== undefined) {
+            posText += `Pan: ${pos.pan.toFixed(2)}, Tilt: ${pos.tilt.toFixed(2)}`;
         }
         
-        // DOM 로드 완료 후 초기화
-        document.addEventListener('DOMContentLoaded', function() {
-            // ESC 키로 전체화면 닫기
-            document.addEventListener('keydown', function(event) {
-                if (event.key === 'Escape') {
-                    closeFullscreen();
+        if (pos.zoom !== undefined) {
+            posText += `, Zoom: ${pos.zoom.toFixed(2)}`;
+        }
+        
+        positionEl.textContent = posText || '정보 없음';
+    }
+    
+    // PTZ 위치 업데이트 중지
+    function stopPTZPositionUpdates(cameraId) {
+        if (ptzPositionTimers[cameraId]) {
+            clearInterval(ptzPositionTimers[cameraId]);
+            delete ptzPositionTimers[cameraId];
+        }
+    }
+    
+    // PTZ 제어 명령 전송
+    function controlPTZ(cameraId, direction, isContinuous) {
+        fetch('/api/ptz/control/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                camera_id: cameraId,
+                direction: direction,
+                is_continuous: isContinuous,
+                speed: 0.7
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                document.getElementById('ptzStatus' + cameraId).textContent = data.is_moving ? '이동 중' : '대기 중';
+            } else {
+                document.getElementById('ptzStatus' + cameraId).textContent = '오류';
+                showNotification('PTZ 제어 실패: ' + data.message, 'error');
+            }
+        })
+        .catch(error => {
+            document.getElementById('ptzStatus' + cameraId).textContent = '오류';
+            showNotification('PTZ 제어 중 오류가 발생했습니다: ' + error.message, 'error');
+        });
+    }
+    
+    // DOM 로드 완료 후 초기화
+    document.addEventListener('DOMContentLoaded', function() {
+        // ESC 키로 전체화면 닫기
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeFullscreen();
+                
+                // 활성화된 PTZ 오버레이가 있으면 닫기
+                if (activePTZCamera) {
+                    document.getElementById('ptzOverlay' + activePTZCamera).style.display = 'none';
+                    stopPTZPositionUpdates(activePTZCamera);
+                    activePTZCamera = null;
                 }
-            });
-            
-            // 탭 링크에 이벤트 리스너 추가
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    // 활성 링크는 무시
-                    if (this.classList.contains('active')) {
-                        return;
-                    }
-                    
-                    const href = this.getAttribute('href');
-                    console.log('탭 클릭: ' + href);
-                    
-                    // 즉시 페이지 이동
-                    window.location.href = href;
-                });
-            });
-            
-            // 모든 카메라 새로고침 버튼 이벤트
-            document.getElementById('refreshAllBtn').addEventListener('click', refreshAllCameras);
-            
-            // 각 카메라 설정
-            {% for camera_id in cameras %}
-            setupCamera({{ camera_id }});
-            {% endfor %}
-            
-            // YOLO 모델 정보 로드
-            loadYoloModelInfo();
-            
-            // Confidence Threshold 슬라이더 설정
-            setupConfidenceSlider();
-            
-            // 카메라 상태 카운터 초기화
-            updateCameraCounters();
-            
-            // PTZ 관련 이벤트 리스너 추가
-            // PTZ 버튼 이벤트 설정
-            document.querySelectorAll('.ptz-control-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const cameraId = this.getAttribute('data-id');
-                    
-                    // 모달에 카메라 정보 설정
-                    document.getElementById('ptzCameraInfo').textContent = `카메라 ID: ${cameraId}`;
-                    document.getElementById('ptzStatus').textContent = '대기 중';
-                    document.getElementById('ptzPosition').textContent = '정보 가져오는 중...';
-                    
-                    // 모달 표시
-                    $('#ptzControlModal').modal('show');
-                    
-                    // 현재 선택된 카메라 ID 저장
-                    currentPtzCameraId = cameraId;
-                    
-                    // 현재 카메라 위치 정보 가져오기
-                    getPtzPosition(cameraId);
-                });
-            });
-            
-            // PTZ 방향 버튼 이벤트 설정
-            document.querySelectorAll('.ptz-btn').forEach(btn => {
-                // 마우스 누를 때
-                btn.addEventListener('mousedown', function(e) {
-                    e.preventDefault();
-                    const direction = this.getAttribute('data-direction');
-                    
-                    if (currentPtzCameraId) {
-                        controlPtz(currentPtzCameraId, direction, true);
-                    }
-                });
-                
-                btn.addEventListener('touchstart', function(e) {
-                    e.preventDefault();
-                    const direction = this.getAttribute('data-direction');
-                    
-                    if (currentPtzCameraId) {
-                        controlPtz(currentPtzCameraId, direction, true);
-                    }
-                });
-                
-                // 마우스 뗄 때
-                btn.addEventListener('mouseup', function(e) {
-                    e.preventDefault();
-                    const direction = this.getAttribute('data-direction');
-                    
-                    if (currentPtzCameraId) {
-                        controlPtz(currentPtzCameraId, direction, false);
-                    }
-                });
-                
-                btn.addEventListener('touchend', function(e) {
-                    e.preventDefault();
-                    const direction = this.getAttribute('data-direction');
-                    
-                    if (currentPtzCameraId) {
-                        controlPtz(currentPtzCameraId, direction, false);
-                    }
-                });
-                
-                // 마우스가 버튼 밖으로 나갔을 때
-                btn.addEventListener('mouseleave', function(e) {
-                    e.preventDefault();
-                    const direction = this.getAttribute('data-direction');
-                    
-                    if (currentPtzCameraId) {
-                        controlPtz(currentPtzCameraId, direction, false);
-                    }
-                });
-            });
-            
-            // PTZ 제어 모달이 닫힐 때 PTZ 동작 정지
-            $('#ptzControlModal').on('hidden.bs.modal', function() {
-                if (currentPtzCameraId) {
-                    // 정지 명령 전송
-                    controlPtz(currentPtzCameraId, 'LEFT', false);
+            }
+        });
+        
+        // 각 카메라 설정
+        const cameraElements = document.querySelectorAll('.camera-card');
+        cameraElements.forEach(card => {
+            const cameraTitle = card.querySelector('.camera-title span');
+            if (cameraTitle) {
+                const cameraText = cameraTitle.textContent;
+                const cameraIdMatch = cameraText.match(/카메라\s+(\d+)/);
+                if (cameraIdMatch && cameraIdMatch[1]) {
+                    setupCamera(cameraIdMatch[1]);
                 }
-                
-                // 위치 정보 업데이트 타이머 정리
-                if (positionUpdateTimer) {
-                    clearInterval(positionUpdateTimer);
-                    positionUpdateTimer = null;
-                }
+            }
+        });
+        
+        // PTZ 버튼 이벤트 등록
+        document.querySelectorAll('.ptz-btn').forEach(btn => {
+            const cameraId = btn.getAttribute('data-camera');
+            const direction = btn.getAttribute('data-direction');
+            
+            // 마우스 누를 때
+            btn.addEventListener('mousedown', function() {
+                controlPTZ(cameraId, direction, true);
+            });
+            
+            // 마우스 뗄 때
+            btn.addEventListener('mouseup', function() {
+                controlPTZ(cameraId, direction, false);
+            });
+            
+            // 마우스가 버튼을 벗어날 때
+            btn.addEventListener('mouseleave', function() {
+                controlPTZ(cameraId, direction, false);
+            });
+            
+            // 터치 이벤트 처리
+            btn.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                controlPTZ(cameraId, direction, true);
+            });
+            
+            btn.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                controlPTZ(cameraId, direction, false);
             });
         });
         
-        function setupCamera(cameraId) {
-            const img = document.getElementById('camera' + cameraId + 'Image');
-            const loading = document.getElementById('loading' + cameraId);
-            const status = document.getElementById('status' + cameraId);
-            
-            // 상태 초기화
-            updateCameraStatus(cameraId, 'connecting');
-            
-            // 이미지 로딩 시작 시
-            img.addEventListener('loadstart', function() {
-                loading.style.display = 'block';
-                updateCameraStatus(cameraId, 'connecting');
-            });
-            
-            // 이미지 로드 완료 시
-            img.addEventListener('load', function() {
-                loading.style.display = 'none';
-                updateCameraStatus(cameraId, 'online');
-                updateCameraCounters();
-            });
-            
-            // 이미지 로드 오류 시
-            img.addEventListener('error', function() {
-                loading.style.display = 'block';
-                updateCameraStatus(cameraId, 'offline');
-                updateCameraCounters();
-                
-                // 3초 후 다시 시도
-                setTimeout(() => {
-                    // URL에 타임스탬프 추가하여 캐시 방지
-                    const baseUrl = "{% url 'camera_feed' camera_id=1 %}".replace('1', cameraId);
-                    img.src = baseUrl + '?t=' + new Date().getTime();
-                }, 3000);
-            });
-        }
-            
-        // 카메라 상태 업데이트
-        function updateCameraStatus(cameraId, status) {
-            const statusEl = document.getElementById('status' + cameraId);
-            const indicator = statusEl.querySelector('.status-indicator');
-            const text = statusEl.querySelector('span');
-            
-            indicator.className = 'status-indicator';
-            
-            if (status === 'online') {
-                indicator.classList.add('status-online');
-                text.textContent = '온라인';
-                statusEl.style.backgroundColor = 'rgba(46, 204, 113, 0.2)';
-            } else if (status === 'offline') {
-                indicator.classList.add('status-offline');
-                text.textContent = '오프라인';
-                statusEl.style.backgroundColor = 'rgba(231, 76, 60, 0.2)';
-            } else {
-                indicator.style.backgroundColor = '#f39c12';
-                text.textContent = '연결 중...';
-                statusEl.style.backgroundColor = 'rgba(243, 156, 18, 0.2)';
-            }
-        }
+        // YOLO 모델 정보 로드
+        loadYoloModelInfo();
         
-        // 카메라 상태 카운터 업데이트
-        function updateCameraCounters() {
-            const onlineCount = document.querySelectorAll('.status-indicator.status-online').length;
-            const offlineCount = document.querySelectorAll('.status-indicator.status-offline').length;
+        // Confidence Threshold 슬라이더 설정
+        setupConfidenceSlider();
+        
+        // 카메라 상태 카운터 초기화
+        updateCameraCounters();
+    });
+    
+    function setupCamera(cameraId) {
+        const img = document.getElementById('camera' + cameraId + 'Image');
+        const loading = document.getElementById('loading' + cameraId);
+        const status = document.getElementById('status' + cameraId);
+        
+        // 상태 초기화
+        updateCameraStatus(cameraId, 'connecting');
+        
+        // 이미지 로딩 시작 시
+        img.addEventListener('loadstart', function() {
+            loading.style.display = 'block';
+            updateCameraStatus(cameraId, 'connecting');
+        });
+        
+        // 이미지 로드 완료 시
+        img.addEventListener('load', function() {
+            loading.style.display = 'none';
+            updateCameraStatus(cameraId, 'online');
+            updateCameraCounters();
+        });
+        
+        // 이미지 로드 오류 시
+        img.addEventListener('error', function() {
+            loading.style.display = 'block';
+            updateCameraStatus(cameraId, 'offline');
+            updateCameraCounters();
             
-            document.getElementById('onlineCount').textContent = onlineCount;
-            document.getElementById('offlineCount').textContent = offlineCount;
+            // 3초 후 다시 시도
+            setTimeout(() => {
+                // URL에 타임스탬프 추가하여 캐시 방지
+                const baseUrl = "{% url 'camera_feed' camera_id=1 %}".replace('1', cameraId);
+                img.src = baseUrl + '?t=' + new Date().getTime();
+            }, 3000);
+        });
+    }
+        
+    // 카메라 상태 업데이트
+    function updateCameraStatus(cameraId, status) {
+        const statusEl = document.getElementById('status' + cameraId);
+        if (!statusEl) return;
+        
+        const indicator = statusEl.querySelector('.status-indicator');
+        const text = statusEl.querySelector('span');
+        
+        indicator.className = 'status-indicator';
+        
+        if (status === 'online') {
+            indicator.classList.add('status-online');
+            text.textContent = '온라인';
+            statusEl.style.backgroundColor = 'rgba(46, 204, 113, 0.2)';
+        } else if (status === 'offline') {
+            indicator.classList.add('status-offline');
+            text.textContent = '오프라인';
+            statusEl.style.backgroundColor = 'rgba(231, 76, 60, 0.2)';
+        } else {
+            indicator.style.backgroundColor = '#f39c12';
+            text.textContent = '연결 중...';
+            statusEl.style.backgroundColor = 'rgba(243, 156, 18, 0.2)';
         }
-            
-        // YOLO 모델 정보 로드 함수
-        function loadYoloModelInfo() {
-            fetch('/api/yolo/info/')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        updateModelInfo(data.model_info);
-                        
-                        // 슬라이더 값 업데이트
-                        const confThreshold = document.getElementById('confThreshold');
-                        const confValue = document.getElementById('confValue');
-                        
-                        if (data.model_info.conf_threshold !== undefined) {
-                            confThreshold.value = data.model_info.conf_threshold;
-                            confValue.textContent = data.model_info.conf_threshold;
-                        }
-                    } else {
-                        document.getElementById('modelInfo').innerHTML = 
-                            `<div class="alert alert-danger">모델 정보를 불러올 수 없습니다</div>`;
-                    }
-                })
-                .catch(error => {
-                    document.getElementById('modelInfo').innerHTML = 
-                        `<div class="alert alert-danger">오류: ${error.message}</div>`;
-                });
-        }
-            
-        // 모델 정보 표시 업데이트
-        function updateModelInfo(info) {
-            const modelInfoHtml = `
-                <table class="table table-sm">
-                    <tr>
-                        <td><strong>모델 경로:</strong></td>
-                        <td>${info.model_path}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>장치:</strong></td>
-                        <td>${info.device}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>추론 시간:</strong></td>
-                        <td>${info.avg_inference_time.toFixed(2)} ms</td>
-                    </tr>
-                </table>
-            `;
-            document.getElementById('modelInfo').innerHTML = modelInfoHtml;
-        }
-            
-        // Confidence 슬라이더 설정
-        function setupConfidenceSlider() {
-            const slider = document.getElementById('confThreshold');
-            const valueDisplay = document.getElementById('confValue');
-            
-            // 슬라이더 값 변경 시 표시 업데이트
-            slider.addEventListener('input', function() {
-                valueDisplay.textContent = this.value;
-            });
-            
-            // 슬라이더 값 변경 완료 시 서버에 업데이트
-            slider.addEventListener('change', function() {
-                updateConfThreshold(this.value);
-            });
-        }
-            
-        // Confidence Threshold 업데이트 함수
-        function updateConfThreshold(value) {
-            // 설정 변경 중임을 표시
-            const valueDisplay = document.getElementById('confValue');
-            valueDisplay.innerHTML = `<i class="fas fa-sync-alt"></i>`;
-            
-            // API 호출하여 값 변경
-            fetch('/api/yolo/set-conf/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ conf: parseFloat(value) })
-            })
+    }
+    
+    // 카메라 상태 카운터 업데이트
+    function updateCameraCounters() {
+        const onlineCount = document.querySelectorAll('.status-indicator.status-online').length;
+        const offlineCount = document.querySelectorAll('.status-indicator.status-offline').length;
+        
+        document.getElementById('onlineCount').textContent = onlineCount;
+        document.getElementById('offlineCount').textContent = offlineCount;
+    }
+        
+    // YOLO 모델 정보 로드 함수
+    function loadYoloModelInfo() {
+        fetch('/api/yolo/info/')
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    valueDisplay.textContent = data.new_conf;
-                    showNotification('Confidence threshold가 변경되었습니다', 'success');
-                    loadYoloModelInfo();
+                    updateModelInfo(data.model_info);
+                    
+                    // 슬라이더 값 업데이트
+                    const confThreshold = document.getElementById('confThreshold');
+                    const confValue = document.getElementById('confValue');
+                    
+                    if (data.model_info.conf_threshold !== undefined) {
+                        confThreshold.value = data.model_info.conf_threshold;
+                        confValue.textContent = data.model_info.conf_threshold;
+                    }
                 } else {
-                    valueDisplay.textContent = value;
-                    showNotification('설정 변경 실패: ' + data.message, 'error');
+                    document.getElementById('modelInfo').innerHTML = 
+                        `<div class="alert alert-danger">모델 정보를 불러올 수 없습니다</div>`;
                 }
             })
             .catch(error => {
-                valueDisplay.textContent = value;
-                showNotification('서버 오류: ' + error.message, 'error');
+                document.getElementById('modelInfo').innerHTML = 
+                    `<div class="alert alert-danger">오류: ${error.message}</div>`;
             });
-        }
-            
-        // 알림 표시 함수 (단순화됨)
-        function showNotification(message, type) {
-            // 이미 표시된 알림이 있으면 제거
-            const existingAlert = document.querySelector('.alert-notification');
-            if (existingAlert) {
-                existingAlert.remove();
+    }
+        
+    // 모델 정보 표시 업데이트
+    function updateModelInfo(info) {
+        const modelInfoHtml = `
+            <table class="table table-sm">
+                <tr>
+                    <td><strong>모델 경로:</strong></td>
+                    <td>${info.model_path}</td>
+                </tr>
+                <tr>
+                    <td><strong>장치:</strong></td>
+                    <td>${info.device}</td>
+                </tr>
+                <tr>
+                    <td><strong>추론 시간:</strong></td>
+                    <td>${info.avg_inference_time.toFixed(2)} ms</td>
+                </tr>
+            </table>
+        `;
+        document.getElementById('modelInfo').innerHTML = modelInfoHtml;
+    }
+        
+    // Confidence 슬라이더 설정
+    function setupConfidenceSlider() {
+        const slider = document.getElementById('confThreshold');
+        const valueDisplay = document.getElementById('confValue');
+        
+        // 슬라이더 값 변경 시 표시 업데이트
+        slider.addEventListener('input', function() {
+            valueDisplay.textContent = this.value;
+        });
+        
+        // 슬라이더 값 변경 완료 시 서버에 업데이트
+        slider.addEventListener('change', function() {
+            updateConfThreshold(this.value);
+        });
+    }
+        
+    // Confidence Threshold 업데이트 함수
+    function updateConfThreshold(value) {
+        // 설정 변경 중임을 표시
+        const valueDisplay = document.getElementById('confValue');
+        valueDisplay.innerHTML = `<i class="fas fa-sync-alt"></i>`;
+        
+        // API 호출하여 값 변경
+        fetch('/api/yolo/set-conf/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ conf: parseFloat(value) })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                valueDisplay.textContent = data.new_conf;
+                showNotification('Confidence threshold가 변경되었습니다', 'success');
+                loadYoloModelInfo();
+            } else {
+                valueDisplay.textContent = value;
+                showNotification('설정 변경 실패: ' + data.message, 'error');
             }
-            
-            // 새 알림 생성
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type === 'error' ? 'danger' : 'success'} alert-notification`;
-            alertDiv.style.position = 'fixed';
-            alertDiv.style.top = '20px';
-            alertDiv.style.right = '20px';
-            alertDiv.style.zIndex = '9999';
-            alertDiv.style.minWidth = '300px';
-            alertDiv.style.padding = '0.5rem 1rem';
-            alertDiv.style.fontSize = '0.9rem';
-            alertDiv.innerHTML = `
-                <button type="button" class="close" data-dismiss="alert">&times;</button>
-                <i class="fas fa-${type === 'error' ? 'exclamation-circle' : 'check-circle'}"></i> ${message}
-            `;
-            
-            document.body.appendChild(alertDiv);
-            
-            // 3초 후 자동으로 사라짐
+        })
+        .catch(error => {
+            valueDisplay.textContent = value;
+            showNotification('서버 오류: ' + error.message, 'error');
+        });
+    }
+        
+    // 알림 표시 함수 (개선됨)
+    function showNotification(message, type, duration = 5000) {
+        // 이미 표시된 동일한 내용의 알림이 있으면 제거
+        const existingAlerts = document.querySelectorAll('.alert-notification');
+        existingAlerts.forEach(alert => {
+            if (alert.textContent.includes(message)) {
+                alert.remove();
+            }
+        });
+        
+        // 새 알림 생성
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert-notification alert alert-${type === 'error' ? 'danger' : 'success'}`;
+        
+        // 알림 내용 설정
+        const alertContent = document.createElement('div');
+        alertContent.className = 'notification-content';
+        alertContent.innerHTML = `
+            <i class="fas fa-${type === 'error' ? 'exclamation-circle' : 'check-circle'}"></i>
+            <span>${message}</span>
+        `;
+        
+        // 닫기 버튼 추가
+        const closeBtn = document.createElement('span');
+        closeBtn.className = 'notification-close';
+        closeBtn.innerHTML = '&times;';
+        closeBtn.addEventListener('click', function() {
+            document.body.removeChild(alertDiv);
+        });
+        
+        // 알림에 내용과 닫기 버튼 추가
+        alertDiv.appendChild(alertContent);
+        alertDiv.appendChild(closeBtn);
+        
+        // 문서에 알림 추가
+        document.body.appendChild(alertDiv);
+        
+        // 지정된 시간 후 자동으로 사라짐
+        if (duration > 0) {
             setTimeout(() => {
-                alertDiv.remove();
-            }, 3000);
+                if (document.body.contains(alertDiv)) {
+                    document.body.removeChild(alertDiv);
+                }
+            }, duration);
         }
-    </script>
-</body>
-</html>
+        
+        return alertDiv;
+    }
+</script>
+{% endblock %}

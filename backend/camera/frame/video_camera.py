@@ -8,7 +8,9 @@ import logging
 import requests
 import json
 import queue
+import os
 from django.utils import timezone
+from pathlib import Path
 
 from ..yolo.detector import ObjectDetector
 from ..stream.stream_handler import StreamHandler
@@ -21,6 +23,76 @@ from ..hardware.ptz_xyz import PTZTrackerController
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 logger.propagate = False
+
+# 영상 저장 기능 활성화 여부
+ENABLE_VIDEO_RECORDING = True  # 영상 저장 기능 활성화
+
+# 녹화 작업 처리용 큐 생성
+video_info_queue = queue.Queue()
+
+# DB 워커 스레드 시작 (영상 정보 저장용)
+def db_worker():
+    """영상 정보를 DB에 저장하는 워커 스레드"""
+    print("[DB_WORKER] 영상 저장 DB 워커 시작됨")
+    while True:
+        try:
+            # 큐에서 항목 가져오기
+            video_info = video_info_queue.get(block=True)
+            
+            if video_info is None:
+                # 종료 신호
+                break
+                
+            # 필요한 정보 추출
+            camera_id = video_info.get('camera_id')
+            filepath = video_info.get('filepath')
+            duration = video_info.get('duration', 0)
+            callback = video_info.get('callback')
+            
+            try:
+                # DB에 영상 정보 저장
+                from ..models import Camera, DetectionVideo
+                
+                try:
+                    # 카메라 객체 가져오기
+                    camera = Camera.objects.get(camera_id=camera_id)
+                    
+                    # DetectionVideo 모델에 저장
+                    video_record = DetectionVideo(
+                        camera=camera,
+                        file_path=filepath,
+                        record_time=timezone.now(),
+                        duration=duration
+                    )
+                    video_record.save()
+                    
+                    print(f"[DB_WORKER] 영상 저장 완료: {filepath}")
+                    
+                    # 저장된 레코드 ID를 콜백으로 전달 (있는 경우)
+                    if callback:
+                        callback(video_record.id)
+                    
+                except Camera.DoesNotExist:
+                    print(f"[DB_WORKER] 오류: 카메라 ID {camera_id}가 DB에 존재하지 않음")
+                except Exception as db_err:
+                    print(f"[DB_WORKER] DB 저장 오류: {db_err}")
+                    
+            except Exception as e:
+                print(f"[DB_WORKER] 영상 정보 처리 오류: {e}")
+                import traceback
+                traceback.print_exc()
+                
+            finally:
+                # 작업 완료 표시
+                video_info_queue.task_done()
+                
+        except Exception as e:
+            print(f"[DB_WORKER] 큐 처리 오류: {e}")
+            time.sleep(5)  # 오류 발생 시 잠시 대기
+
+# DB 워커 스레드 시작
+db_thread = threading.Thread(target=db_worker, daemon=True)
+db_thread.start()
 
 class VideoCamera:
     """카메라 스트림과 객체 감지 처리 - 동기식 처리 방식으로 변경"""
@@ -36,7 +108,7 @@ class VideoCamera:
         self._frame_count = 0
         self._last_results = None
         self._last_db_update = time.time()
-        self._db_update_interval = 30  # 30초마다 DB 업데이트
+        self._db_update_interval = 5  # 30초마다 DB 업데이트
         self._capture_timing_stats = []
         
         # 마지막 유효 프레임 저장 변수 초기화
@@ -46,13 +118,32 @@ class VideoCamera:
         
         # 객체 감지 간격 제어 변수 추가
         self._last_detection_time = 0
-        self._detection_interval = 0.033  
+        self._detection_interval = 0.1  
         
         # 추적 관련 변수 초기화
         self._tracking_enabled = False
         self._last_tracking_update = 0
         self._tracking_update_interval = 0.2  # 추적 알고리즘에 0.2초마다 정보 전송 (5 FPS)
         self._tracking_api_url = "http://127.0.0.1:8000/camera/api/ptz/update-detection/"
+        
+        # 영상 저장 관련 변수 초기화 (단순화)
+        self._video_writer = None
+        self._recording = False
+        self._record_start_time = None
+        self._max_recording_time = 30  # 최대 녹화 시간(초)
+        self._recording_fps = 24.04  # 녹화 FPS 
+        self._last_recording_time = 0
+        self._recording_interval = 0  # 녹화 간격(초) - 최소 녹화 간격
+        self._current_video_id = None
+        self._current_video_path = None
+        self._last_frame_write_time = 0  # 마지막 프레임 저장 시간
+        self._frame_interval = 1.0 / (self._recording_fps * 1.2)  # 약간 더 빠른 프레임 캡처 (20% 더 빠름)
+        self._recorded_frames = 0  # 녹화된 프레임 수 추적
+        
+        # 녹화 디렉토리 생성
+        self._recordings_dir = Path('video_recordings')
+        if not os.path.exists(self._recordings_dir):
+            os.makedirs(self._recordings_dir)
         
         # PTZ 추적 컨트롤러 가져오기
         try:
@@ -200,15 +291,12 @@ class VideoCamera:
                 
                 # 마지막 감지 시간 갱신
                 self._last_detection_time = current_time
-                
-                # 감지 간격에 대한 로그 기록
-                logger.debug(f"객체 감지 수행 - 카메라 {camera_id_str}, 간격: {self._detection_interval}초")
             else:
                 # 이전 결과 재사용
                 result = self._last_results
             
             # 감지 결과가 있으면 바운딩 박스 그리기
-            if result and hasattr(result, 'boxes') and hasattr(result.boxes, '__len__') and len(result.boxes) > 0:
+            if result and hasattr(result, 'boxes') and len(result.boxes) > 0:
                 try:
                     # 바운딩 박스 그리기
                     frame = draw_detections(frame, result, self.detector.model.names, detector=self.detector, camera_id=camera_id_str)
@@ -218,17 +306,50 @@ class VideoCamera:
                     if current_time - self._last_tracking_update >= self._tracking_update_interval:
                         self._send_detection_to_tracker(result.boxes, frame.shape[1], frame.shape[0])
                         self._last_tracking_update = current_time
+                    
+                    # 객체가 감지되었을 때 녹화 시작 (녹화 기능 활성화된 경우)
+                    if ENABLE_VIDEO_RECORDING and not self._recording:
+                        self._maybe_start_recording(frame)
                         
                 except Exception as e:
                     logger.error(f"바운딩 박스 그리기 오류: {e}")
-                    import traceback
-                    logger.error(traceback.format_exc())
             elif self._tracking_enabled:
                 # 객체가 없는 경우에도 빈 배열로 추적 업데이트
                 current_time = time.time()
                 if current_time - self._last_tracking_update >= self._tracking_update_interval:
                     self._send_detection_to_tracker([], frame.shape[1], frame.shape[0])
                     self._last_tracking_update = current_time
+            
+            # 녹화 중인 경우 프레임 추가 및 녹화 종료 여부 확인
+            if ENABLE_VIDEO_RECORDING and self._recording:
+                try:
+                    # 현재 시간 확인
+                    current_time = time.time()
+                    
+                    # 녹화 중이면 프레임 추가 (일정 간격으로)
+                    if self._video_writer and self._video_writer.isOpened():
+                        # 녹화 시작 이후 경과 시간 계산
+                        elapsed_time = current_time - self._record_start_time
+                        
+                        # 마지막 프레임 저장 후 충분한 시간이 지났는지 확인
+                        time_since_last_frame = current_time - self._last_frame_write_time
+                        
+                        # 목표 프레임 수를 계산하고 현재 녹화된 프레임 수와 비교
+                        target_frames = int(elapsed_time * self._recording_fps)
+                        frames_behind = target_frames - self._recorded_frames
+                        
+                        # 프레임이 뒤쳐져 있거나 충분한 시간이 지났으면 프레임 추가
+                        if frames_behind > 0 or time_since_last_frame >= self._frame_interval:
+                            self._video_writer.write(frame)
+                            self._last_frame_write_time = current_time
+                            self._recorded_frames += 1  # 프레임 카운트 증가
+                    
+                    # 최대 녹화 시간 초과했는지 확인
+                    if elapsed_time >= self._max_recording_time:
+                        self._stop_recording()
+                except Exception as rec_err:
+                    logger.error(f"녹화 중 오류: {rec_err}")
+                    self._stop_recording()  # 오류 발생 시 녹화 종료
             
             # 가드존 시각화 (별도 기능으로 처리)
             has_guard_zone = (camera_id_str is not None and 
@@ -290,6 +411,160 @@ class VideoCamera:
             import traceback
             logger.error(traceback.format_exc())
             return self._create_empty_frame(f"오류: {str(e)}")
+    
+    def _maybe_start_recording(self, frame):
+        """객체가 감지되었을 때 녹화 시작 (조건 만족 시)"""
+        # 이미 녹화 중이면 무시
+        if self._recording:
+            return
+            
+        # 마지막 녹화 후 일정 시간이 지나지 않았으면 무시
+        current_time = time.time()
+        if current_time - self._last_recording_time < self._recording_interval:
+            return
+            
+        try:
+            # 간단한 파일명 생성
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"camera_{self.camera_number}_{timestamp}.mp4"
+            filepath = os.path.join(self._recordings_dir, filename)
+            
+            # 비디오 라이터 초기화
+            height, width = frame.shape[:2]
+            
+            # 비디오 코덱 설정
+            # 다양한 코덱 지원
+            # 'mp4v': MPEG-4 코덱 (가장 안정적인 선택)
+            # 'XVID': MPEG-4 변형 (널리 지원됨)
+            # 'MJPG': Motion JPEG (화질 우수, 파일 크기 큼)
+            try:
+                # 안정적인 MP4V 코덱 사용 (H.264 건너뛰기)
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                
+                # 디버깅 로그
+                print(f"[RECORD] 녹화 시작 시도: {filepath} (코덱: mp4v/MPEG-4)")
+                
+                # 비디오 라이터 생성 (FPS를 명확하게 지정)
+                self._video_writer = cv2.VideoWriter(filepath, fourcc, self._recording_fps, (width, height))
+                
+                # 비디오 라이터가 열리지 않으면 fallback 코덱 시도
+                if not self._video_writer.isOpened():
+                    print(f"[RECORD_WARNING] MPEG-4 코덱 실패, XVID 시도 중")
+                    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+                    self._video_writer = cv2.VideoWriter(filepath, fourcc, self._recording_fps, (width, height))
+                    
+                    # 여전히 실패하면 MJPG 시도
+                    if not self._video_writer.isOpened():
+                        print(f"[RECORD_WARNING] XVID 코덱 실패, MJPG 시도 중")
+                        fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+                        self._video_writer = cv2.VideoWriter(filepath, fourcc, self._recording_fps, (width, height))
+            except Exception as e:
+                print(f"[RECORD_ERROR] 코덱 초기화 오류: {e}, 기본 코덱으로 폴백")
+                # 모든 것이 실패하면 기본 코덱 사용
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                self._video_writer = cv2.VideoWriter(filepath, fourcc, self._recording_fps, (width, height))
+            
+            # fps 속성 설정을 통해 정확한 재생 속도 보장
+            if hasattr(self._video_writer, 'set'):
+                self._video_writer.set(cv2.CAP_PROP_FPS, self._recording_fps)
+                
+            # 비디오 품질 설정 (비트레이트 및 품질)
+            if hasattr(self._video_writer, 'set'):
+                # 품질 설정 (0-100, 높을수록 좋은 품질)
+                self._video_writer.set(cv2.VIDEOWRITER_PROP_QUALITY, 90)
+                
+                # 비트레이트 설정 (높을수록 좋은 품질, 기본값: 4000000 = 4Mbps)
+                bitrate = 6000000  # 6Mbps (브라우저 호환성 개선)
+                if hasattr(cv2, 'VIDEOWRITER_PROP_BITRATE'):
+                    self._video_writer.set(cv2.VIDEOWRITER_PROP_BITRATE, bitrate)
+            
+            if not self._video_writer.isOpened():
+                print(f"[RECORD_ERROR] 모든 코덱 시도 실패. 비디오 라이터를 열 수 없음: {filepath}")
+                self._video_writer = None
+                return
+                
+            # 녹화 상태 설정
+            self._recording = True
+            self._record_start_time = current_time
+            self._current_video_path = filepath
+            self._last_frame_write_time = current_time  # 첫 프레임 저장 시간 초기화
+            self._recorded_frames = 0  # 프레임 카운터 초기화
+            
+            # 첫 프레임 추가
+            self._video_writer.write(frame)
+            self._recorded_frames += 1  # 첫 프레임 카운트
+            
+            print(f"[RECORD] 녹화 시작 성공: {filepath}")
+            
+        except Exception as e:
+            print(f"[RECORD_ERROR] 녹화 시작 오류: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # 실패 시 정리
+            if self._video_writer:
+                try:
+                    self._video_writer.release()
+                except:
+                    pass
+            self._video_writer = None
+            self._recording = False
+    
+    def _stop_recording(self):
+        """녹화 종료 (단순화된 버전)"""
+        if not self._recording or self._video_writer is None:
+            return
+            
+        try:
+            # 비디오 라이터 닫기
+            self._video_writer.release()
+            
+            # 상태 업데이트
+            filepath = self._current_video_path
+            
+            # 실제 경과 시간 계산
+            elapsed_time = time.time() - self._record_start_time
+            
+            # 실제 재생 시간은 저장된 프레임 수와 FPS 기반으로 계산
+            real_duration = self._recorded_frames / float(self._recording_fps)
+            
+            # 실제 녹화 시간과 재생 시간 불일치 확인
+            if abs(elapsed_time - real_duration) > 0.5:  # 0.5초 이상 차이가 나면
+                # 실제 경과 시간과 프레임 수를 기반으로 정확한 FPS 계산
+                actual_fps = self._recorded_frames / elapsed_time
+                real_duration = elapsed_time  # 경과 시간으로 재생 시간 조정
+                
+                print(f"[RECORD] FPS 불일치 감지: 설정={self._recording_fps}, 실제={actual_fps:.2f}")
+                print(f"[RECORD] 녹화 종료: {filepath}, 저장된 프레임={self._recorded_frames}, 조정된 재생 시간={real_duration:.2f}초")
+            else:
+                print(f"[RECORD] 녹화 종료: {filepath}, 저장된 프레임={self._recorded_frames}, 재생 시간={real_duration:.2f}초")
+            
+            self._last_recording_time = time.time()
+            
+            # 로그
+            print(f"[RECORD] 녹화 종료: {filepath}, 실제 경과 시간={elapsed_time:.2f}초")
+            
+            # 큐에 저장 요청 추가 (독립적으로 처리)
+            video_info_queue.put({
+                'camera_id': self.camera_number,
+                'filepath': filepath,
+                'duration': elapsed_time,  # 실제 경과 시간을 저장 (재생 시간과 일치시킴)
+                'callback': self._set_video_id
+            })
+            
+        except Exception as e:
+            print(f"[RECORD_ERROR] 녹화 종료 오류: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            # 상태 초기화
+            self._video_writer = None
+            self._recording = False
+            self._current_video_path = None
+    
+    def _set_video_id(self, video_id):
+        """DB 저장 후 콜백으로 비디오 ID 설정"""
+        self._current_video_id = video_id
     
     def _send_detection_to_tracker(self, boxes, frame_width, frame_height):
         """감지된 객체 바운딩 박스 정보를 추적 알고리즘에 전송"""
@@ -374,29 +649,6 @@ class VideoCamera:
             height, width = 480, 640
             empty_frame = np.zeros((height, width, 3), dtype=np.uint8)
             
-            # 오류 메시지 표시
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.7
-            thickness = 2
-            color = (255, 255, 255)  # 흰색 텍스트
-            
-            # 텍스트 크기 계산
-            (text_width, text_height), _ = cv2.getTextSize(message, font, font_scale, thickness)
-            
-            # 텍스트 위치 계산 (중앙)
-            position = ((width - text_width) // 2, (height + text_height) // 2)
-            
-            # 텍스트 그리기
-            cv2.putText(empty_frame, message, position, font, font_scale, color, thickness)
-            
-            # 현재 시간 추가
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            cv2.putText(empty_frame, timestamp, (10, height - 10), font, 0.5, (150, 150, 150), 1)
-            
-            # 카메라 ID 표시
-            camera_text = f"카메라 {self.camera_number}"
-            cv2.putText(empty_frame, camera_text, (width - 120, height - 10), font, 0.5, (150, 150, 150), 1)
-            
             # JPEG로 인코딩
             _, jpeg = cv2.imencode('.jpg', empty_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             return jpeg.tobytes()
@@ -404,7 +656,7 @@ class VideoCamera:
         except Exception as e:
             logger.error(f"빈 프레임 생성 오류: {e}")
             # 최소한의 바이트 데이터 반환
-            return b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' ",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff\xdb\x00C\x01\t\t\t\x0c\x0b\x0c\x18\r\r\x182!\x1c!22222222222222222222222222222222222222222222222222\xff\xc0\x00\x11\x08\x00\x01\x00\x01\x03\x01"\x00\x02\x11\x01\x03\x11\x01\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xc4\x00\xb5\x10\x00\x02\x01\x03\x03\x02\x04\x03\x05\x05\x04\x04\x00\x00\x01}\x01\x02\x03\x00\x04\x11\x05\x12!1A\x06\x13Qa\x07"q\x142\x81\x91\xa1\x08#B\xb1\xc1\x15R\xd1\xf0$3br\x82\t\n\x16\x17\x18\x19\x1a%&\'()*456789:CDEFGHIJSTUVWXYZcdefghijstuvwxyz\x83\x84\x85\x86\x87\x88\x89\x8a\x92\x93\x94\x95\x96\x97\x98\x99\x9a\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xff\xc4\x00\x1f\x01\x00\x03\x01\x01\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xc4\x00\xb5\x11\x00\x02\x01\x02\x04\x04\x03\x04\x07\x05\x04\x04\x00\x01\x02w\x00\x01\x02\x03\x11\x04\x05!1\x06\x12AQ\x07aq\x13"2\x81\x08\x14B\x91\xa1\xb1\xc1\t#3R\xf0\x15br\xd1\n\x16$4\xe1%\xf1\x17\x18\x19\x1a&\'()*56789:CDEFGHIJSTUVWXYZcdefghijstuvwxyz\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x92\x93\x94\x95\x96\x97\x98\x99\x9a\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00?\x00\xfe\xfe(\xa2\x8a\x00\xff\xd9' + b'\r\n'
+            return b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' ",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff\xdb\x00C\x01\t\t\t\x0c\x0b\x0c\x18\r\r\x182!\x1c!22222222222222222222222222222222222222222222222222\xff\xc0\x00\x11\x08\x00\x01\x00\x01\x03\x01"\x00\x02\x11\x01\x03\x11\x01\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xc4\x00\xb5\x10\x00\x02\x01\x03\x03\x02\x04\x03\x05\x05\x04\x04\x00\x00\x01}\x01\x02\x03\x00\x04\x11\x05\x12!1A\x06\x13Qa\x07"q\x142\x81\x91\xa1\x08#B\xb1\xc1\x15R\xd1\xf0$3br\x82\t\n\x16\x17\x18\x19\x1a%&\'()*56789:CDEFGHIJSTUVWXYZcdefghijstuvwxyz\x83\x84\x85\x86\x87\x88\x89\x8a\x92\x93\x94\x95\x96\x97\x98\x99\x9a\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xff\xc4\x00\x1f\x01\x00\x03\x01\x01\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xc4\x00\xb5\x11\x00\x02\x01\x02\x04\x04\x03\x04\x07\x05\x04\x04\x00\x01\x02w\x00\x01\x02\x03\x11\x04\x05!1\x06\x12AQ\x07aq\x13"2\x81\x08\x14B\x91\xa1\xb1\xc1\t#3R\xf0\x15br\xd1\n\x16$4\xe1%\xf1\x17\x18\x19\x1a&\'()*56789:CDEFGHIJSTUVWXYZcdefghijstuvwxyz\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x92\x93\x94\x95\x96\x97\x98\x99\x9a\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00?\x00\xfe\xfe(\xa2\x8a\x00\xff\xd9' + b'\r\n'
     
     def _process_detection_results(self, boxes, frame_width, frame_height):
         """감지 결과 처리 - 조류퇴치 및 DB 업데이트"""
@@ -426,7 +678,7 @@ class VideoCamera:
         
         # DB에 감지 정보 저장
         try:
-            from ..models import Camera
+            from ..models import Camera, DetectionVideo
             
             # 카메라 ID가 유효한지 확인
             camera_id = self.camera_number
@@ -436,24 +688,7 @@ class VideoCamera:
                 camera_exists = Camera.objects.filter(camera_id=camera_id).exists()
                 if not camera_exists:
                     print(f"[DB_SAVE] 경고: 카메라 ID {camera_id}가 데이터베이스에 존재하지 않습니다.")
-                    # DB에 카메라 정보 추가 시도
-                    try:
-                        print(f"[DB_SAVE] 카메라 {camera_id} 정보를 DB에 자동 추가 시도")
-                        new_camera = Camera(
-                            camera_id=camera_id,
-                            rtsp_address=self.rtsp_url or f"카메라 {camera_id}",
-                            status="active",
-                            installation_direction=f"방향 {camera_id}",
-                            viewing_angle=0,
-                            installation_height=0,
-                            wind_turbine_id=f"WT{camera_id}"
-                        )
-                        new_camera.save()
-                        print(f"[DB_SAVE] 카메라 {camera_id} 정보가 DB에 자동 추가되었습니다.")
-                        camera_exists = True
-                    except Exception as cam_err:
-                        print(f"[DB_SAVE] 카메라 자동 등록 실패: {cam_err}")
-                
+                    
                 if not camera_exists:
                     print(f"[DB_SAVE] 카메라 DB 등록 실패. 감지 정보 저장 건너뜁니다.")
                     return  # 감지 정보 저장 건너뛰기
@@ -628,15 +863,18 @@ class VideoCamera:
         }
 
     def __del__(self):
-        """객체가 소멸될 때 호출됨"""
+        """객체 소멸자"""
         try:
             # 실행 중 플래그 해제
             self.is_running = False
             
             # 스트림 핸들러 정리
-            if self.stream_handler:
-                self.stream_handler.stop()
-                
+            if hasattr(self, 'stream_handler') and self.stream_handler is not None:
+                try:
+                    self.stream_handler.stop()
+                except:
+                    pass
+            
             # 메모리 정리
             self._last_results = None
             self._last_valid_frame = None
@@ -644,7 +882,7 @@ class VideoCamera:
             # GPU 메모리 정리
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-                
+            
             logger.info(f"카메라 {self.camera_number} 자원 정리 완료")
         except Exception as e:
             logger.error(f"자원 정리 중 오류: {e}")

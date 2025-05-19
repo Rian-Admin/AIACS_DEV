@@ -259,6 +259,30 @@ class CameraManager:
         
         return True
     
+    def force_reconnect(self, camera_id):
+        """특정 카메라에 대한 연결을 강제로 재시도합니다."""
+        camera_id_str = str(camera_id)
+        logger.info(f"카메라 {camera_id_str} 강제 재연결 시도")
+        
+        # 카메라 상태 초기화
+        if camera_id_str in self._camera_status:
+            self._camera_status[camera_id_str] = "reconnecting"
+        
+        # 해당 카메라가 초기화 중인 경우 대기
+        if camera_id_str in self._cameras_initializing:
+            logger.info(f"카메라 {camera_id_str}는 이미 초기화 중입니다. 완료될 때까지 대기합니다.")
+            wait_count = 0
+            while camera_id_str in self._cameras_initializing and wait_count < 6:
+                time.sleep(5)  # 5초 간격으로 대기
+                wait_count += 1
+                logger.info(f"카메라 {camera_id_str} 초기화 대기 중... ({wait_count}/6)")
+        
+        # 강제 재연결 시도 (초기화 메서드 활용)
+        success = self._initialize_camera(camera_id_str)
+        logger.info(f"카메라 {camera_id_str} 강제 재연결 결과: {'성공' if success else '실패'}")
+        
+        return success
+    
     def get_camera_url(self, camera_id):
         """카메라 ID에 해당하는 RTSP URL 반환"""
         # 항상 문자열 키로 사용

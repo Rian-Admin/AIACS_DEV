@@ -1,6 +1,7 @@
 # urls.py
 from django.urls import path
 from .views.camera_views import index, camera_feed, ptz_controller
+from .views.camera_views import detection_videos_view
 from .views.api_views import get_recent_detections, get_detection_stats, get_db_status, get_cameras
 from .views.api_views import set_yolo_conf, get_yolo_info, enable_controller, disable_controller
 from .views import api_views
@@ -35,6 +36,9 @@ urlpatterns = [
     
     # 카메라 스트림
     path('camera/<str:camera_id>/', camera_feed, name='camera_feed'),
+    
+    # 감지 영상 뷰 - 활성화
+    path('detection-videos/', detection_videos_view, name='detection_videos'),
     
     # API - 감지 정보
     path('api/detections/recent/', get_recent_detections, name='recent_detections'),

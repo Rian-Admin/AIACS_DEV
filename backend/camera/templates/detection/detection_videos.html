@@ -1,0 +1,562 @@
+{% extends 'detection/base_layout.html' %}
+
+{% block custom_styles %}
+<link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet" />
+<style>
+    .filter-section {
+        margin-bottom: 20px;
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+    }
+    
+    .video-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    
+    .video-table th, .video-table td {
+        padding: 12px 15px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .video-table thead th {
+        background-color: #f5f5f5;
+        font-weight: 600;
+        color: #333;
+        text-align: left;
+    }
+    
+    .video-table tbody tr:hover {
+        background-color: #f9f9f9;
+    }
+    
+    .video-thumbnail {
+        width: 160px;
+        height: 90px;
+        background-color: #f0f0f0;
+        position: relative;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    
+    .video-thumbnail img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .video-duration {
+        position: absolute;
+        bottom: 5px;
+        right: 5px;
+        background-color: rgba(0,0,0,0.7);
+        color: white;
+        padding: 2px 6px;
+        border-radius: 2px;
+        font-size: 10px;
+    }
+    
+    .btn-watch {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+    
+    .btn-watch:hover {
+        background-color: #0069d9;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+    }
+    
+    .empty-state i {
+        font-size: 48px;
+        color: #aaa;
+        margin-bottom: 20px;
+    }
+    
+    .empty-state h4 {
+        color: #555;
+        margin-bottom: 10px;
+    }
+    
+    .empty-state p {
+        color: #777;
+    }
+    
+    /* 모달 스타일 */
+    .video-modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0,0,0,0.8);
+    }
+    
+    .modal-content {
+        position: relative;
+        margin: 50px auto;
+        padding: 20px;
+        width: 80%;
+        max-width: 800px;
+        background-color: #fff;
+        border-radius: 8px;
+    }
+    
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .modal-title {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+    }
+    
+    .close-modal {
+        font-size: 24px;
+        font-weight: bold;
+        color: #555;
+        cursor: pointer;
+    }
+    
+    .close-modal:hover {
+        color: #000;
+    }
+    
+    .modal-video-container {
+        width: 100%;
+        position: relative;
+    }
+    
+    /* Video.js 사용자 정의 스타일 */
+    .vjs-loading-spinner {
+        border: 4px solid rgba(43, 51, 63, 0.7);
+        border-top-color: rgba(0, 123, 255, 0.9);
+    }
+    
+    .vjs-big-play-button {
+        background-color: rgba(0, 123, 255, 0.7) !important;
+        border-color: #0069d9 !important;
+    }
+    
+    .download-suggestion {
+        position: absolute;
+        bottom: 10px;
+        width: 100%;
+        text-align: center;
+        z-index: 10;
+        display: none;
+    }
+    
+    .download-suggestion .alert {
+        display: inline-block;
+        margin: 0;
+        padding: 8px 15px;
+        background-color: rgba(255, 255, 255, 0.9);
+        border-radius: 4px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h2 class="mb-4">감지 영상</h2>
+            
+            <div class="filter-section">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label for="camera-filter">카메라</label>
+                        <select id="camera-filter" class="form-control">
+                            <option value="">모든 카메라</option>
+                            {% for camera in cameras %}
+                            <option value="{{ camera.camera_id }}">카메라 {{ camera.camera_id }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="date-filter">날짜</label>
+                        <input type="date" id="date-filter" class="form-control">
+                    </div>
+                    <div class="col-md-4 mb-3 d-flex align-items-end">
+                        <button id="apply-filter" class="btn btn-primary w-100">필터 적용</button>
+                    </div>
+                </div>
+            </div>
+            
+            {% if videos %}
+            <div class="table-responsive">
+                <table class="video-table">
+                    <thead>
+                        <tr>
+                            <th>카메라</th>
+                            <th>녹화 시간</th>
+                            <th>위치</th>
+                            <th>길이</th>
+                            <th>썸네일</th>
+                            <th>작업</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for video in videos %}
+                        <tr data-camera="{{ video.camera.camera_id }}" data-date="{{ video.record_time|date:'Y-m-d' }}">
+                            <td>카메라 {{ video.camera.camera_id }}</td>
+                            <td>{{ video.record_time|date:"Y-m-d H:i:s" }}</td>
+                            <td>{{ video.camera.installation_direction }}</td>
+                            <td>{{ video.duration|floatformat:1 }}초</td>
+                            <td>
+                                <div class="video-thumbnail">
+                                    <img src="/static/images/video-thumbnail.jpg" alt="비디오 썸네일">
+                                    <div class="video-duration">{{ video.duration|floatformat:1 }}초</div>
+                                </div>
+                            </td>
+                            <td>
+                                <button class="btn-watch" data-video="{{ video.file_path }}" data-title="카메라 {{ video.camera.camera_id }} - {{ video.record_time|date:'Y-m-d H:i:s' }}">
+                                    동영상 보기
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-video-slash"></i>
+                <h4>감지된 영상이 없습니다</h4>
+                <p>객체가 감지되면 영상이 여기에 표시됩니다.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- 동영상 모달 -->
+<div id="videoModal" class="video-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">동영상 제목</h3>
+            <div>
+                <a id="downloadVideoBtn" href="#" class="btn btn-sm btn-primary me-2" download>
+                    <i class="fas fa-download"></i> 다운로드
+                </a>
+                <span class="close-modal">&times;</span>
+            </div>
+        </div>
+        <div class="modal-video-container">
+            <!-- Video.js 적용 -->
+            <video id="modalVideo" class="video-js vjs-default-skin vjs-big-play-centered" controls preload="auto" width="100%" height="auto">
+                <p class="vjs-no-js">
+                    비디오를 시청하려면 자바스크립트를 활성화하거나 최신 브라우저가 필요합니다.<br>
+                    <a href="#" id="fallbackDownloadBtn" class="btn btn-primary btn-sm mt-2">
+                        <i class="fas fa-download"></i> 영상 다운로드 후 재생하기
+                    </a>
+                </p>
+            </video>
+            <div id="downloadSuggestion" class="download-suggestion">
+                <div class="alert alert-info">
+                    재생이 원활하지 않나요? <a href="#" id="alertDownloadBtn" class="alert-link">다운로드 후 재생하기</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block custom_scripts %}
+<!-- Video.js 라이브러리 추가 -->
+<script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
+<!-- 필요한 경우 HLS 스트리밍을 위한 추가 라이브러리 -->
+<script src="https://cdn.jsdelivr.net/npm/videojs-contrib-quality-levels@2.1.0/dist/videojs-contrib-quality-levels.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/videojs-http-source-selector@1.1.6/dist/videojs-http-source-selector.min.js"></script>
+
+<script>
+    $(document).ready(function() {
+        // 비디오 플레이어 객체 전역 변수
+        let videoPlayer = null;
+        let videoLoadTimeout = null;
+        
+        // 필터 적용 버튼 클릭 이벤트
+        $('#apply-filter').click(function() {
+            let cameraId = $('#camera-filter').val();
+            let date = $('#date-filter').val();
+            
+            // 모든 비디오 행 표시
+            $('.video-table tbody tr').show();
+            
+            // 카메라 필터 적용
+            if (cameraId) {
+                $('.video-table tbody tr').not(`[data-camera="${cameraId}"]`).hide();
+            }
+            
+            // 날짜 필터 적용
+            if (date) {
+                $('.video-table tbody tr').not(`[data-date="${date}"]`).hide();
+                
+                // 서버 사이드에서도 필터링 (페이지 리로드)
+                // window.location.href = `?date=${date}&camera=${cameraId}`;
+            }
+        });
+        
+        // 동영상 파일 크기 확인 및 상태 업데이트 함수
+        function checkVideoFileSize(url) {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('HEAD', url, true);
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            const size = xhr.getResponseHeader('Content-Length');
+                            resolve(size ? parseInt(size) : 0);
+                        } else {
+                            reject(new Error('파일 크기를 확인할 수 없습니다.'));
+                        }
+                    }
+                };
+                xhr.send();
+            });
+        }
+        
+        // 동영상 보기 버튼에 onclick 이벤트 추가
+        $('.btn-watch').on('click', async function() {
+            const videoSrc = $(this).data('video');
+            const videoTitle = $(this).data('title');
+            
+            // 다운로드 버튼 설정
+            const downloadFilename = videoTitle.replace(/[^a-zA-Z0-9가-힣]/g, '_') + '.mp4';
+            $('#downloadVideoBtn').attr('href', videoSrc);
+            $('#downloadVideoBtn').attr('download', downloadFilename);
+            $('#fallbackDownloadBtn').attr('href', videoSrc);
+            $('#fallbackDownloadBtn').attr('download', downloadFilename);
+            $('#alertDownloadBtn').attr('href', videoSrc);
+            $('#alertDownloadBtn').attr('download', downloadFilename);
+            
+            // 모달 제목 설정
+            $('.modal-title').text(videoTitle);
+            
+            // 파일 크기 체크 (30MB = 31457280 bytes)
+            try {
+                const fileSize = await checkVideoFileSize(videoSrc);
+                console.log(`비디오 파일 크기: ${(fileSize / 1024 / 1024).toFixed(2)}MB`);
+                
+                // 파일 크기가 크면 화질 선택 옵션 활성화
+                if (fileSize > 15 * 1024 * 1024) { // 15MB 이상
+                    $('#downloadSuggestion').show();
+                    
+                    // 일정 시간 후 다운로드 제안
+                    setTimeout(() => {
+                        if (videoPlayer && videoPlayer.readyState() < 3) {
+                            $('#downloadSuggestion').show();
+                        }
+                    }, 8000);
+                }
+            } catch (error) {
+                console.error('파일 크기 확인 오류:', error);
+            }
+            
+            // 기존 플레이어 제거
+            if (videoPlayer) {
+                videoPlayer.dispose();
+                videoPlayer = null;
+            }
+            
+            // Video.js 플레이어 초기화
+            videoPlayer = videojs('modalVideo', {
+                controls: true,
+                autoplay: false,
+                preload: 'auto',
+                fluid: true,
+                responsive: true,
+                html5: {
+                    vhs: {
+                        overrideNative: true
+                    },
+                    nativeAudioTracks: false,
+                    nativeVideoTracks: false
+                },
+                controlBar: {
+                    children: [
+                        'playToggle',
+                        'progressControl',
+                        'currentTimeDisplay',
+                        'timeDivider',
+                        'durationDisplay',
+                        'volumePanel',
+                        'fullscreenToggle'
+                    ]
+                }
+            });
+            
+            // 소스 설정
+            videoPlayer.src({
+                src: videoSrc,
+                type: 'video/mp4'
+            });
+            
+            // 네트워킹 상태 모니터링
+            videoPlayer.networkState();
+            
+            // 타임아웃 설정 - 10초 후에도 로딩 중이면 다운로드 제안
+            if (videoLoadTimeout) {
+                clearTimeout(videoLoadTimeout);
+            }
+            
+            videoLoadTimeout = setTimeout(() => {
+                if (videoPlayer && videoPlayer.readyState() < 3) {
+                    $('#downloadSuggestion').show();
+                }
+            }, 10000);
+            
+            // 이벤트 리스너 설정
+            videoPlayer.on('loadedmetadata', function() {
+                console.log('비디오 메타데이터 로드됨');
+                if (videoLoadTimeout) {
+                    clearTimeout(videoLoadTimeout);
+                }
+            });
+            
+            videoPlayer.on('canplay', function() {
+                console.log('비디오 재생 가능');
+            });
+            
+            videoPlayer.on('waiting', function() {
+                console.log('비디오 버퍼링 중...');
+                $('#downloadSuggestion').show();
+            });
+            
+            videoPlayer.on('error', function(e) {
+                console.error('비디오 재생 오류:', this.error());
+                $('#downloadSuggestion').show();
+            });
+            
+            videoPlayer.ready(function() {
+                console.log('비디오 플레이어 준비 완료');
+                // 프리로드 시작
+                this.load();
+                
+                // 브라우저에 따른 자동 재생 처리
+                this.play().catch(function(error) {
+                    console.log('자동 재생 불가:', error);
+                    // 자동 재생이 차단되었을 때 표시할 메시지나 액션
+                });
+            });
+            
+            // 모달 표시
+            $('#videoModal').css('display', 'block');
+        });
+        
+        // 모달 닫기 버튼 클릭 이벤트
+        $('.close-modal').click(function() {
+            closeVideoModal();
+        });
+        
+        // 모달 외부 클릭 시 닫기
+        $(window).click(function(event) {
+            if (event.target == document.getElementById('videoModal')) {
+                closeVideoModal();
+            }
+        });
+        
+        // 키보드 이벤트 (ESC 키 눌렀을 때 모달 닫기)
+        $(document).keydown(function(event) {
+            if (event.keyCode === 27) { // ESC 키 코드
+                closeVideoModal();
+            }
+        });
+        
+        // 다운로드 제안 클릭 이벤트
+        $('#alertDownloadBtn').on('click', function(e) {
+            e.preventDefault();
+            const href = $(this).attr('href');
+            const filename = $(this).attr('download');
+            
+            if (href && filename) {
+                const a = document.createElement('a');
+                a.href = href;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        });
+        
+        // 모달 닫기 공통 함수
+        function closeVideoModal() {
+            // 비디오 정지 및 플레이어 제거
+            if (videoPlayer) {
+                videoPlayer.pause();
+                videoPlayer.dispose();
+                videoPlayer = null;
+            }
+            
+            // 타임아웃 클리어
+            if (videoLoadTimeout) {
+                clearTimeout(videoLoadTimeout);
+                videoLoadTimeout = null;
+            }
+            
+            // UI 초기화
+            $('#downloadSuggestion').hide();
+            
+            // 모달 숨기기
+            $('#videoModal').css('display', 'none');
+        }
+        
+        // 비디오 재생 상태 개선을 위한 추가 기능
+        function setupVideoOptimization() {
+            // 브라우저 캐시 설정 확인
+            try {
+                if ('caches' in window) {
+                    console.log('브라우저가 캐시 API를 지원합니다.');
+                } else {
+                    console.log('브라우저가 캐시 API를 지원하지 않습니다.');
+                }
+            } catch (e) {
+                console.error('캐시 API 확인 중 오류:', e);
+            }
+            
+            // 네트워크 상태 확인
+            try {
+                if (navigator.connection) {
+                    console.log('네트워크 타입:', navigator.connection.effectiveType);
+                    console.log('다운로드 속도:', navigator.connection.downlink, 'Mbps');
+                    
+                    // 느린 연결에서 다운로드 제안 바로 표시
+                    if (navigator.connection.effectiveType === 'slow-2g' || 
+                        navigator.connection.effectiveType === '2g' ||
+                        navigator.connection.downlink < 1) {
+                        $('.btn-watch').on('click', function() {
+                            setTimeout(() => $('#downloadSuggestion').show(), 1000);
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error('네트워크 정보 확인 중 오류:', e);
+            }
+        }
+        
+        // 초기화 시 추가 기능 설정
+        setupVideoOptimization();
+    });
+</script>
+{% endblock %}

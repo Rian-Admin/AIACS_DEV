@@ -1,689 +1,621 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>모델 관리 - 조류충돌방지시스템</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        /* 일관된 테마 스타일 */
-        body {
-            background-color: #f8f9fa;
-            padding-top: 0;
-            margin: 0;
-        }
-        
-        .system-header {
-            background-color: #2c3e50;
-            color: white;
-            padding: 1rem 0;
-            margin-bottom: 0;
-        }
-        
-        .system-title {
-            font-weight: 600;
-            font-size: 1.4rem;
-            margin: 0;
-        }
-        
-        .system-subtitle {
-            font-weight: 300;
-            font-size: 0.9rem;
-            margin-top: 0.2rem;
-        }
-        
-        .nav-tabs {
-            background-color: #f8f9fa;
-            padding-top: 0.5rem;
-            border-bottom: 1px solid #dee2e6;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            margin-bottom: 1.5rem;
-        }
-        
-        .nav-link {
-            color: #495057;
-            font-weight: 500;
-            padding: 0.7rem 1.5rem;
-            border-radius: 0.25rem 0.25rem 0 0;
-            transition: all 0.2s ease;
-        }
-        
-        .nav-link:hover {
-            background-color: rgba(13, 110, 253, 0.1);
-            color: #0d6efd;
-        }
-        
-        .nav-link.active {
-            font-weight: bold;
-            color: #0d6efd;
-            background-color: white;
-            border-color: #dee2e6 #dee2e6 #fff;
-            box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
-        }
-        
-        /* 모델 관리 특화 스타일 */
-        .model-card {
-            margin-bottom: 1.5rem;
-            transition: all 0.3s ease;
-            padding: 1.5rem;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-        }
-        
-        .active-model {
-            border: 2px solid #2ecc71;
-            background-color: rgba(46, 204, 113, 0.1);
-        }
-        
-        .model-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-        }
-        
-        .form-control:focus, .form-select:focus {
-            border-color: #0d6efd;
-            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
-        }
-        
-        .upload-area {
-            background-color: #fff;
-            border: 2px dashed #ddd;
-            border-radius: 10px;
-            padding: 2rem;
-            text-align: center;
-            margin-bottom: 2rem;
-            transition: all 0.3s ease;
-        }
-        
-        .upload-area:hover {
-            border-color: #0d6efd;
-            cursor: pointer;
-        }
-        
-        .footer {
-            background: #1c2833;
-            color: #ecf0f1;
-            padding: 1rem 0;
-            text-align: center;
-            margin-top: 2rem;
-        }
-    </style>
-</head>
-<body>
-    <!-- 헤더 -->
-    <header class="system-header">
-        <div class="container">
-            <h1 class="system-title">
-                <i class="fas fa-dove"></i> 조류충돌방지시스템
-            </h1>
-            <p class="system-subtitle">모델 관리 페이지</p>
-        </div>
-    </header>
+{% extends "detection/base_layout.html" %}
 
-    <!-- 일관된 탭 내비게이션 -->
+{% block title %}모델 관리 - 조류충돌방지시스템{% endblock %}
+{% block subtitle %}모델 관리 페이지{% endblock %}
+
+{% block styles %}
+<style>
+    /* 모델 관리 특화 스타일 */
+    .model-card {
+        margin-bottom: 1.5rem;
+        transition: all 0.3s ease;
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+    }
+    
+    .active-model {
+        border: 2px solid #2ecc71;
+        background-color: rgba(46, 204, 113, 0.1);
+    }
+    
+    .model-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+    
+    .form-control:focus, .form-select:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+    
+    .upload-area {
+        background-color: #fff;
+        border: 2px dashed #ddd;
+        border-radius: 10px;
+        padding: 2rem;
+        text-align: center;
+        margin-bottom: 2rem;
+        transition: all 0.3s ease;
+    }
+    
+    .upload-area:hover {
+        border-color: #0d6efd;
+        cursor: pointer;
+    }
+    
+    .footer {
+        background: #1c2833;
+        color: #ecf0f1;
+        padding: 1rem 0;
+        text-align: center;
+        margin-top: 2rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- 알림 메시지 영역 -->
+    <div id="alertArea"></div>
+
+    <!-- 현재 모델 정보 -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-info-circle"></i> 현재 사용 중인 모델 정보</h5>
+        </div>
+        <div class="card-body">
+            <div id="currentModelInfo">
+                <div class="d-flex justify-content-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">로딩 중...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 모델 업로드 영역 -->
+    <div class="card mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="fas fa-upload"></i> 새 모델 업로드</h5>
+        </div>
+        <div class="card-body">
+            <div class="upload-area" id="dropArea">
+                <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
+                <h4>모델 파일을 여기에 드래그하세요</h4>
+                <p class="text-muted">또는 클릭하여 파일 선택</p>
+                <p class="small text-muted">지원 파일 형식: .pt (PyTorch 모델 파일)</p>
+                <input type="file" id="fileInput" accept=".pt" style="display: none;">
+            </div>
+            
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label for="modelName" class="form-label">모델 이름 (선택사항)</label>
+                    <input type="text" class="form-control" id="modelName" placeholder="모델을 구분할 수 있는 이름을 입력하세요">
+                </div>
+                <div class="mb-3">
+                    <label for="modelDescription" class="form-label">모델 설명 (선택사항)</label>
+                    <textarea class="form-control" id="modelDescription" rows="3" placeholder="모델에 대한 설명을 입력하세요 (학습 데이터, 성능 등)"></textarea>
+                </div>
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary" id="uploadBtn">
+                        <i class="fas fa-upload me-2"></i> 모델 업로드
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 사용 가능한 모델 목록 -->
+    <div class="card mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="fas fa-list"></i> 사용 가능한 모델 목록</h5>
+        </div>
+        <div class="card-body">
+            <div id="modelsList">
+                <div class="d-flex justify-content-center">
+                    <div class="spinner-border text-info" role="status">
+                        <span class="visually-hidden">로딩 중...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 푸터 -->
+<footer class="footer">
     <div class="container">
-        <ul class="nav nav-tabs">
-            <li class="nav-item">
-                <a class="nav-link" href="/" target="_top">메인 대시보드</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/camera-management/" target="_top">카메라 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/db-management/" target="_top">데이터베이스 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link active" href="/model-management/" target="_top">모델 관리</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="/speaker-management/" target="_top">스피커 관리</a>
-            </li>
-        </ul>
+        <div>AI Anti-Collision System © 2024 조류충돌방지시스템</div>
     </div>
+</footer>
 
-    <div class="container mt-4">
-        <!-- 알림 메시지 영역 -->
-        <div id="alertArea"></div>
-
-        <!-- 현재 모델 정보 -->
-        <div class="card mb-4">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-info-circle"></i> 현재 사용 중인 모델 정보</h5>
+<!-- 모델 전환 확인 모달 -->
+<div class="modal fade" id="switchModelModal" tabindex="-1" aria-labelledby="switchModelModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="switchModelModalLabel">모델 전환 확인</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="card-body">
-                <div id="currentModelInfo">
-                    <div class="d-flex justify-content-center">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">로딩 중...</span>
-                        </div>
-                    </div>
-                </div>
+            <div class="modal-body">
+                <p>선택한 모델로 전환하시겠습니까?</p>
+                <p><strong>주의:</strong> 모델을 전환하면 서비스가 잠시 중단될 수 있습니다.</p>
+                <p>전환할 모델: <span id="targetModelName">모델명</span></p>
             </div>
-        </div>
-
-        <!-- 모델 업로드 영역 -->
-        <div class="card mb-4">
-            <div class="card-header bg-success text-white">
-                <h5 class="mb-0"><i class="fas fa-upload"></i> 새 모델 업로드</h5>
-            </div>
-            <div class="card-body">
-                <div class="upload-area" id="dropArea">
-                    <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
-                    <h4>모델 파일을 여기에 드래그하세요</h4>
-                    <p class="text-muted">또는 클릭하여 파일 선택</p>
-                    <p class="small text-muted">지원 파일 형식: .pt (PyTorch 모델 파일)</p>
-                    <input type="file" id="fileInput" accept=".pt" style="display: none;">
-                </div>
-                
-                <form id="uploadForm" enctype="multipart/form-data">
-                    <div class="mb-3">
-                        <label for="modelName" class="form-label">모델 이름 (선택사항)</label>
-                        <input type="text" class="form-control" id="modelName" placeholder="모델을 구분할 수 있는 이름을 입력하세요">
-                    </div>
-                    <div class="mb-3">
-                        <label for="modelDescription" class="form-label">모델 설명 (선택사항)</label>
-                        <textarea class="form-control" id="modelDescription" rows="3" placeholder="모델에 대한 설명을 입력하세요 (학습 데이터, 성능 등)"></textarea>
-                    </div>
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary" id="uploadBtn">
-                            <i class="fas fa-upload me-2"></i> 모델 업로드
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- 사용 가능한 모델 목록 -->
-        <div class="card mb-4">
-            <div class="card-header bg-info text-white">
-                <h5 class="mb-0"><i class="fas fa-list"></i> 사용 가능한 모델 목록</h5>
-            </div>
-            <div class="card-body">
-                <div id="modelsList">
-                    <div class="d-flex justify-content-center">
-                        <div class="spinner-border text-info" role="status">
-                            <span class="visually-hidden">로딩 중...</span>
-                        </div>
-                    </div>
-                </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" id="confirmSwitchBtn">전환 확인</button>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- 푸터 -->
-    <footer class="footer">
-        <div class="container">
-            <div>AI Anti-Collision System © 2024 조류충돌방지시스템</div>
-        </div>
-    </footer>
-
-    <!-- 모델 전환 확인 모달 -->
-    <div class="modal fade" id="switchModelModal" tabindex="-1" aria-labelledby="switchModelModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="switchModelModalLabel">모델 전환 확인</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p>선택한 모델로 전환하시겠습니까?</p>
-                    <p><strong>주의:</strong> 모델을 전환하면 서비스가 잠시 중단될 수 있습니다.</p>
-                    <p>전환할 모델: <span id="targetModelName">모델명</span></p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
-                    <button type="button" class="btn btn-primary" id="confirmSwitchBtn">전환 확인</button>
-                </div>
+<!-- 모델 삭제 확인 모달 -->
+<div class="modal fade" id="deleteModelModal" tabindex="-1" aria-labelledby="deleteModelModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModelModalLabel">모델 삭제 확인</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>선택한 모델을 삭제하시겠습니까?</p>
+                <p><strong>주의:</strong> 모델을 삭제하면 서비스가 잠시 중단될 수 있습니다.</p>
+                <p>삭제할 모델: <span id="deleteModelName">모델명</span></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" id="confirmDeleteBtn">삭제 확인</button>
             </div>
         </div>
     </div>
+</div>
+{% endblock %}
 
-    <!-- 모델 삭제 확인 모달 -->
-    <div class="modal fade" id="deleteModelModal" tabindex="-1" aria-labelledby="deleteModelModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="deleteModelModalLabel">모델 삭제 확인</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p>선택한 모델을 삭제하시겠습니까?</p>
-                    <p><strong>주의:</strong> 모델을 삭제하면 서비스가 잠시 중단될 수 있습니다.</p>
-                    <p>삭제할 모델: <span id="deleteModelName">모델명</span></p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
-                    <button type="button" class="btn btn-primary" id="confirmDeleteBtn">삭제 확인</button>
-                </div>
-            </div>
-        </div>
-    </div>
+{% block scripts %}
+<script>
+    // 전역 변수
+    let currentModelPath = '';
+    let availableModels = [];
+    let selectedModelPath = '';
 
-    <!-- 스크립트 -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // 전역 변수
-        let currentModelPath = '';
-        let availableModels = [];
-        let selectedModelPath = '';
+    // DOM 로드 완료 후 초기화
+    document.addEventListener('DOMContentLoaded', function() {
+        // 모델 정보 로드
+        loadCurrentModelInfo();
+        loadAvailableModels();
+        
+        // 파일 드롭 영역 설정
+        setupDropArea();
+        
+        // 업로드 폼 이벤트 설정
+        document.getElementById('uploadForm').addEventListener('submit', handleModelUpload);
+    });
 
-        // DOM 로드 완료 후 초기화
-        document.addEventListener('DOMContentLoaded', function() {
-            // 탭 링크에 이벤트 리스너 추가
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.addEventListener('click', function(e) {
-                    // 활성 링크는 무시
-                    if (this.classList.contains('active')) {
-                        return;
-                    }
-                    
-                    // 즉시 페이지 이동
-                    window.location.href = this.getAttribute('href');
-                });
+    // 현재 모델 정보 로드
+    function loadCurrentModelInfo() {
+        fetch('/api/yolo/info/')
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    currentModelPath = data.model_info.model_path;
+                    updateCurrentModelInfo(data.model_info);
+                } else {
+                    showAlert('모델 정보를 불러오는데 실패했습니다.', 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('서버 통신 오류: ' + error.message, 'danger');
             });
-            
-            // 모델 정보 로드
-            loadCurrentModelInfo();
-            loadAvailableModels();
-            
-            // 파일 드롭 영역 설정
-            setupDropArea();
-            
-            // 업로드 폼 이벤트 설정
-            document.getElementById('uploadForm').addEventListener('submit', handleModelUpload);
-        });
+    }
 
-        // 현재 모델 정보 로드
-        function loadCurrentModelInfo() {
-            fetch('/api/yolo/info/')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        currentModelPath = data.model_info.model_path;
-                        updateCurrentModelInfo(data.model_info);
-                    } else {
-                        showAlert('모델 정보를 불러오는데 실패했습니다.', 'danger');
-                    }
-                })
-                .catch(error => {
-                    showAlert('서버 통신 오류: ' + error.message, 'danger');
-                });
-        }
-
-        // 현재 모델 정보 표시 업데이트
-        function updateCurrentModelInfo(info) {
-            const modelName = info.model_path.split('/').pop();
-            const modelInfoHtml = `
-                <div class="card active-model">
-                    <div class="card-body">
-                        <h4 class="card-title">
-                            <i class="fas fa-check-circle text-success me-2"></i>
-                            ${modelName}
-                        </h4>
-                        <div class="row mt-3">
-                            <div class="col-md-6">
-                                <p><strong>모델 경로:</strong> ${info.model_path}</p>
-                                <p><strong>모델 크기:</strong> ${info.model_size || 'N/A'} MB</p>
-                            </div>
-                            <div class="col-md-6">
-                                <p><strong>실행 장치:</strong> ${info.device}</p>
-                                <p><strong>평균 추론 시간:</strong> ${info.avg_inference_time.toFixed(2)} ms</p>
-                            </div>
+    // 현재 모델 정보 표시 업데이트
+    function updateCurrentModelInfo(info) {
+        const modelName = info.model_path.split('/').pop();
+        const modelInfoHtml = `
+            <div class="card active-model">
+                <div class="card-body">
+                    <h4 class="card-title">
+                        <i class="fas fa-check-circle text-success me-2"></i>
+                        ${modelName}
+                    </h4>
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <p><strong>모델 경로:</strong> ${info.model_path}</p>
+                            <p><strong>모델 크기:</strong> ${info.model_size || 'N/A'} MB</p>
                         </div>
-                        <div class="mt-3">
-                            <p><strong>클래스 수:</strong> ${info.classes?.length || 'N/A'}</p>
-                            <p><strong>임계값 (Confidence Threshold):</strong> ${info.conf_threshold}</p>
+                        <div class="col-md-6">
+                            <p><strong>실행 장치:</strong> ${info.device}</p>
+                            <p><strong>평균 추론 시간:</strong> ${info.avg_inference_time.toFixed(2)} ms</p>
                         </div>
                     </div>
+                    <div class="mt-3">
+                        <p><strong>클래스 수:</strong> ${info.classes?.length || 'N/A'}</p>
+                        <p><strong>임계값 (Confidence Threshold):</strong> ${info.conf_threshold}</p>
+                    </div>
                 </div>
-            `;
-            document.getElementById('currentModelInfo').innerHTML = modelInfoHtml;
-        }
+            </div>
+        `;
+        document.getElementById('currentModelInfo').innerHTML = modelInfoHtml;
+    }
 
-        // 사용 가능한 모델 목록 로드
-        function loadAvailableModels() {
-            fetch('/api/yolo/available-models/')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        availableModels = data.models;
-                        updateModelsList(data.models);
-                    } else {
-                        showAlert('모델 목록을 불러오는데 실패했습니다.', 'danger');
-                        document.getElementById('modelsList').innerHTML = `
-                            <div class="alert alert-warning">
-                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                모델 목록을 불러올 수 없습니다.
-                            </div>
-                        `;
-                    }
-                })
-                .catch(error => {
-                    showAlert('서버 통신 오류: ' + error.message, 'danger');
+    // 사용 가능한 모델 목록 로드
+    function loadAvailableModels() {
+        fetch('/api/yolo/available-models/')
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    availableModels = data.models;
+                    updateModelsList(data.models);
+                } else {
+                    showAlert('모델 목록을 불러오는데 실패했습니다.', 'danger');
                     document.getElementById('modelsList').innerHTML = `
-                        <div class="alert alert-danger">
-                            <i class="fas fa-exclamation-circle me-2"></i>
-                            서버 오류: ${error.message}
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            모델 목록을 불러올 수 없습니다.
                         </div>
                     `;
-                });
-        }
-
-        // 모델 목록 표시 업데이트
-        function updateModelsList(models) {
-            if (models.length === 0) {
+                }
+            })
+            .catch(error => {
+                showAlert('서버 통신 오류: ' + error.message, 'danger');
                 document.getElementById('modelsList').innerHTML = `
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle me-2"></i>
-                        사용 가능한 추가 모델이 없습니다.
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        서버 오류: ${error.message}
                     </div>
                 `;
-                return;
-            }
+            });
+    }
 
-            let modelsHtml = '<div class="row">';
+    // 모델 목록 표시 업데이트
+    function updateModelsList(models) {
+        if (models.length === 0) {
+            document.getElementById('modelsList').innerHTML = `
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    사용 가능한 추가 모델이 없습니다.
+                </div>
+            `;
+            return;
+        }
+
+        let modelsHtml = '<div class="row">';
+        
+        models.forEach(model => {
+            const isActive = model.path === currentModelPath;
+            const modelName = model.path.split('/').pop();
             
-            models.forEach(model => {
-                const isActive = model.path === currentModelPath;
-                const modelName = model.path.split('/').pop();
-                
-                modelsHtml += `
-                    <div class="col-md-6 mb-3">
-                        <div class="card ${isActive ? 'active-model' : ''}">
-                            <div class="card-body">
-                                <h5 class="card-title">
-                                    ${isActive ? '<i class="fas fa-check-circle text-success me-2"></i>' : ''}
-                                    ${modelName}
-                                </h5>
-                                <p class="card-text">
-                                    <small class="text-muted">경로: ${model.path}</small><br>
-                                    <small class="text-muted">크기: ${model.size || 'N/A'} MB</small><br>
-                                    <small class="text-muted">업로드: ${model.uploaded_date || 'N/A'}</small>
-                                </p>
-                                <div class="d-flex justify-content-between">
-                                    ${!isActive ? `
-                                    <button class="btn btn-sm btn-outline-primary switch-model-btn" 
-                                            data-model-path="${model.path}"
-                                            data-model-name="${modelName}">
-                                        <i class="fas fa-exchange-alt me-1"></i> 이 모델로 전환
-                                    </button>` : `
-                                    <span class="badge bg-success">현재 사용중</span>`}
-                                    
-                                    <button class="btn btn-sm btn-outline-danger delete-model-btn ms-2" 
-                                            data-model-path="${model.path}"
-                                            data-model-name="${modelName}"
-                                            ${isActive ? 'disabled' : ''}>
-                                        <i class="fas fa-trash-alt"></i>${isActive ? ' 사용 중 삭제 불가' : ' 삭제'}
-                                    </button>
-                                </div>
+            modelsHtml += `
+                <div class="col-md-6 mb-3">
+                    <div class="card ${isActive ? 'active-model' : ''}">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                ${isActive ? '<i class="fas fa-check-circle text-success me-2"></i>' : ''}
+                                ${modelName}
+                            </h5>
+                            <p class="card-text">
+                                <small class="text-muted">경로: ${model.path}</small><br>
+                                <small class="text-muted">크기: ${model.size || 'N/A'} MB</small><br>
+                                <small class="text-muted">업로드: ${model.uploaded_date || 'N/A'}</small>
+                            </p>
+                            <div class="d-flex justify-content-between">
+                                ${!isActive ? `
+                                <button class="btn btn-sm btn-outline-primary switch-model-btn" 
+                                        data-model-path="${model.path}"
+                                        data-model-name="${modelName}">
+                                    <i class="fas fa-exchange-alt me-1"></i> 이 모델로 전환
+                                </button>` : `
+                                <span class="badge bg-success">현재 사용중</span>`}
+                                
+                                <button class="btn btn-sm btn-outline-danger delete-model-btn ms-2" 
+                                        data-model-path="${model.path}"
+                                        data-model-name="${modelName}"
+                                        ${isActive ? 'disabled' : ''}>
+                                    <i class="fas fa-trash-alt"></i>${isActive ? ' 사용 중 삭제 불가' : ' 삭제'}
+                                </button>
                             </div>
                         </div>
                     </div>
-                `;
+                </div>
+            `;
+        });
+        
+        modelsHtml += '</div>';
+        document.getElementById('modelsList').innerHTML = modelsHtml;
+        
+        // 모델 전환 버튼 이벤트 추가
+        document.querySelectorAll('.switch-model-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedModelPath = btn.dataset.modelPath;
+                document.getElementById('targetModelName').textContent = btn.dataset.modelName;
+                
+                const switchModal = new bootstrap.Modal(document.getElementById('switchModelModal'));
+                switchModal.show();
             });
-            
-            modelsHtml += '</div>';
-            document.getElementById('modelsList').innerHTML = modelsHtml;
-            
-            // 모델 전환 버튼 이벤트 추가
-            document.querySelectorAll('.switch-model-btn').forEach(btn => {
+        });
+        
+        // 모델 삭제 버튼 이벤트 추가
+        document.querySelectorAll('.delete-model-btn').forEach(btn => {
+            if (!btn.disabled) {
                 btn.addEventListener('click', () => {
                     selectedModelPath = btn.dataset.modelPath;
-                    document.getElementById('targetModelName').textContent = btn.dataset.modelName;
+                    document.getElementById('deleteModelName').textContent = btn.dataset.modelName;
                     
-                    const switchModal = new bootstrap.Modal(document.getElementById('switchModelModal'));
-                    switchModal.show();
+                    const deleteModal = new bootstrap.Modal(document.getElementById('deleteModelModal'));
+                    deleteModal.show();
                 });
-            });
-            
-            // 모델 삭제 버튼 이벤트 추가
-            document.querySelectorAll('.delete-model-btn').forEach(btn => {
-                if (!btn.disabled) {
-                    btn.addEventListener('click', () => {
-                        selectedModelPath = btn.dataset.modelPath;
-                        document.getElementById('deleteModelName').textContent = btn.dataset.modelName;
-                        
-                        const deleteModal = new bootstrap.Modal(document.getElementById('deleteModelModal'));
-                        deleteModal.show();
-                    });
-                }
-            });
-            
-            // 모델 전환 확인 버튼 이벤트
-            document.getElementById('confirmSwitchBtn').addEventListener('click', switchModel);
-            
-            // 모델 삭제 확인 버튼 이벤트
-            document.getElementById('confirmDeleteBtn').addEventListener('click', deleteModel);
-        }
-
-        // 파일 드롭 영역 설정
-        function setupDropArea() {
-            const dropArea = document.getElementById('dropArea');
-            const fileInput = document.getElementById('fileInput');
-            
-            // 드롭 영역 클릭 시 파일 선택 다이얼로그 열기
-            dropArea.addEventListener('click', () => {
-                fileInput.click();
-            });
-            
-            // 파일 선택 시 처리
-            fileInput.addEventListener('change', (e) => {
-                if (e.target.files.length > 0) {
-                    handleFiles(e.target.files);
-                }
-            });
-            
-            // 드래그 이벤트 처리
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                dropArea.addEventListener(eventName, preventDefaults, false);
-            });
-            
-            function preventDefaults(e) {
-                e.preventDefault();
-                e.stopPropagation();
             }
-            
-            // 드래그 효과
-            ['dragenter', 'dragover'].forEach(eventName => {
-                dropArea.addEventListener(eventName, () => {
-                    dropArea.classList.add('bg-light');
-                }, false);
-            });
-            
-            ['dragleave', 'drop'].forEach(eventName => {
-                dropArea.addEventListener(eventName, () => {
-                    dropArea.classList.remove('bg-light');
-                }, false);
-            });
-            
-            // 파일 드롭 처리
-            dropArea.addEventListener('drop', (e) => {
-                const files = e.dataTransfer.files;
-                handleFiles(files);
-            }, false);
-        }
+        });
+        
+        // 모델 전환 확인 버튼 이벤트
+        document.getElementById('confirmSwitchBtn').addEventListener('click', switchModel);
+        
+        // 모델 삭제 확인 버튼 이벤트
+        document.getElementById('confirmDeleteBtn').addEventListener('click', deleteModel);
+    }
 
-        // 파일 처리
-        function handleFiles(files) {
-            if (files.length === 0) return;
-            
-            const file = files[0];
-            
-            // 파일 확장자 검사
-            if (!file.name.endsWith('.pt')) {
-                showAlert('PyTorch 모델 파일(.pt)만 업로드 가능합니다.', 'warning');
-                return;
+    // 파일 드롭 영역 설정
+    function setupDropArea() {
+        const dropArea = document.getElementById('dropArea');
+        const fileInput = document.getElementById('fileInput');
+        
+        // 드롭 영역 클릭 시 파일 선택 다이얼로그 열기
+        dropArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        // 파일 선택 시 처리
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFiles(e.target.files);
             }
-            
-            // 파일 크기 검사 (100MB 제한)
-            if (file.size > 100 * 1024 * 1024) {
-                showAlert('100MB 이하의 파일만 업로드 가능합니다.', 'warning');
-                return;
-            }
-            
-            // 파일 정보 표시
-            document.getElementById('uploadBtn').innerHTML = `
-                <i class="fas fa-upload me-2"></i> "${file.name}" 업로드 (${(file.size / (1024 * 1024)).toFixed(2)} MB)
-            `;
-            
-            // 파일 입력에 선택된 파일 설정
-            const dataTransfer = new DataTransfer();
-            dataTransfer.items.add(file);
-            document.getElementById('fileInput').files = dataTransfer.files;
-        }
-
-        // 모델 업로드 처리
-        function handleModelUpload(e) {
+        });
+        
+        // 드래그 이벤트 처리
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+        });
+        
+        function preventDefaults(e) {
             e.preventDefault();
-            
-            const fileInput = document.getElementById('fileInput');
-            const modelName = document.getElementById('modelName').value;
-            const modelDescription = document.getElementById('modelDescription').value;
-            
-            if (fileInput.files.length === 0) {
-                showAlert('업로드할 모델 파일을 선택해주세요.', 'warning');
-                return;
-            }
-            
-            const formData = new FormData();
-            formData.append('model_file', fileInput.files[0]);
-            formData.append('name', modelName);
-            formData.append('description', modelDescription);
-            
-            // 업로드 버튼 비활성화 및 로딩 표시
-            const uploadBtn = document.getElementById('uploadBtn');
-            uploadBtn.disabled = true;
-            uploadBtn.innerHTML = `
-                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                업로드 중...
-            `;
-            
-            // 서버로 전송
-            fetch('/api/yolo/upload-model/', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    showAlert('모델이 성공적으로 업로드되었습니다.', 'success');
-                    // 폼 초기화
-                    document.getElementById('uploadForm').reset();
-                    uploadBtn.innerHTML = '<i class="fas fa-upload me-2"></i> 모델 업로드';
-                    uploadBtn.disabled = false;
-                    // 모델 목록 새로고침
-                    loadAvailableModels();
-                } else {
-                    showAlert('모델 업로드 실패: ' + data.message, 'danger');
-                    uploadBtn.innerHTML = '<i class="fas fa-upload me-2"></i> 모델 업로드';
-                    uploadBtn.disabled = false;
-                }
-            })
-            .catch(error => {
-                showAlert('서버 통신 오류: ' + error.message, 'danger');
-                uploadBtn.innerHTML = '<i class="fas fa-upload me-2"></i> 모델 업로드';
-                uploadBtn.disabled = false;
-            });
+            e.stopPropagation();
         }
+        
+        // 드래그 효과
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => {
+                dropArea.classList.add('bg-light');
+            }, false);
+        });
+        
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => {
+                dropArea.classList.remove('bg-light');
+            }, false);
+        });
+        
+        // 파일 드롭 처리
+        dropArea.addEventListener('drop', (e) => {
+            handleFiles(e.dataTransfer.files);
+        }, false);
+    }
 
-        // 모델 전환
-        function switchModel() {
-            if (!selectedModelPath) return;
-            
-            // 모달 닫기
-            bootstrap.Modal.getInstance(document.getElementById('switchModelModal')).hide();
-            
-            // 로딩 표시
-            showAlert('모델 전환 중...', 'info', false);
-            
-            // 서버에 모델 전환 요청
-            fetch('/api/yolo/switch-model/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    model_path: selectedModelPath
-                })
+    // 파일 처리 함수
+    function handleFiles(files) {
+        if (files.length === 0) return;
+        
+        // 첫 번째 파일만 처리
+        const file = files[0];
+        
+        // 유효성 검사
+        if (!file.name.endsWith('.pt')) {
+            showAlert('지원되지 않는 파일 형식입니다. PyTorch 모델 파일(.pt)만 업로드 가능합니다.', 'danger');
+            return;
+        }
+        
+        // 파일 정보 표시
+        document.getElementById('uploadBtn').textContent = `${file.name} 업로드`;
+        document.getElementById('uploadBtn').classList.remove('btn-primary');
+        document.getElementById('uploadBtn').classList.add('btn-success');
+        
+        // 모델 이름 자동 설정 (파일명 기준)
+        if (!document.getElementById('modelName').value) {
+            document.getElementById('modelName').value = file.name.replace('.pt', '');
+        }
+    }
+
+    // 모델 업로드 처리
+    function handleModelUpload(e) {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('fileInput');
+        
+        if (!fileInput.files || fileInput.files.length === 0) {
+            showAlert('업로드할 모델 파일을 선택해주세요.', 'warning');
+            return;
+        }
+        
+        const file = fileInput.files[0];
+        const modelName = document.getElementById('modelName').value || file.name.replace('.pt', '');
+        const modelDescription = document.getElementById('modelDescription').value || '';
+        
+        // FormData 객체에 파일 추가
+        const formData = new FormData();
+        formData.append('model_file', file);
+        formData.append('model_name', modelName);
+        formData.append('description', modelDescription);
+        
+        // 업로드 버튼 비활성화 및 로딩 상태 표시
+        const uploadBtn = document.getElementById('uploadBtn');
+        const originalText = uploadBtn.innerHTML;
+        uploadBtn.innerHTML = `
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            업로드 중...
+        `;
+        uploadBtn.disabled = true;
+        
+        // 파일 업로드 API 호출
+        fetch('/api/yolo/upload-model/', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showAlert(`모델 "${modelName}"이(가) 성공적으로 업로드되었습니다.`, 'success');
+                
+                // 폼 초기화
+                document.getElementById('uploadForm').reset();
+                document.getElementById('fileInput').value = '';
+                
+                // 모델 목록 새로고침
+                loadAvailableModels();
+            } else {
+                showAlert(`모델 업로드 실패: ${data.message}`, 'danger');
+            }
+        })
+        .catch(error => {
+            showAlert(`서버 통신 오류: ${error.message}`, 'danger');
+        })
+        .finally(() => {
+            // 업로드 버튼 복원
+            uploadBtn.innerHTML = originalText;
+            uploadBtn.disabled = false;
+            uploadBtn.classList.remove('btn-success');
+            uploadBtn.classList.add('btn-primary');
+        });
+    }
+
+    // 모델 전환 함수
+    function switchModel() {
+        if (!selectedModelPath) {
+            return;
+        }
+        
+        // 모달 닫기
+        const switchModal = bootstrap.Modal.getInstance(document.getElementById('switchModelModal'));
+        switchModal.hide();
+        
+        // 로딩 상태 표시
+        showAlert('모델 전환 중입니다. 잠시만 기다려 주세요...', 'warning', 0);
+        
+        // 모델 전환 API 호출
+        fetch('/api/yolo/switch-model/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model_path: selectedModelPath
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    showAlert('모델이 성공적으로 전환되었습니다.', 'success');
-                    // 최신 정보 갱신
+        })
+        .then(response => response.json())
+        .then(data => {
+            // 로딩 알림 제거
+            closeAllAlerts();
+            
+            if (data.status === 'success') {
+                showAlert('모델이 성공적으로 전환되었습니다.', 'success');
+                
+                // 모델 정보 다시 로드
+                setTimeout(() => {
                     loadCurrentModelInfo();
                     loadAvailableModels();
-                } else {
-                    showAlert('모델 전환 실패: ' + data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('서버 통신 오류: ' + error.message, 'danger');
-            });
-        }
-
-        // 모델 삭제
-        function deleteModel() {
-            if (!selectedModelPath) return;
-            
-            // 모달 닫기
-            bootstrap.Modal.getInstance(document.getElementById('deleteModelModal')).hide();
-            
-            // 로딩 표시
-            showAlert('모델 삭제 중...', 'info', false);
-            
-            // 서버에 모델 삭제 요청
-            fetch('/api/yolo/delete-model/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    model_path: selectedModelPath
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    showAlert('모델이 성공적으로 삭제되었습니다.', 'success');
-                    // 모델 목록 새로고침
-                    loadAvailableModels();
-                } else {
-                    showAlert('모델 삭제 실패: ' + data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('서버 통신 오류: ' + error.message, 'danger');
-            });
-        }
-
-        // 알림 표시
-        function showAlert(message, type, autoClose = true) {
-            // 기존 알림 제거
-            document.querySelectorAll('.alert-dismissible').forEach(alert => {
-                alert.remove();
-            });
-            
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-            alertDiv.role = 'alert';
-            alertDiv.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            `;
-            
-            document.getElementById('alertArea').appendChild(alertDiv);
-            
-            if (autoClose) {
-                setTimeout(() => {
-                    alertDiv.classList.remove('show');
-                    setTimeout(() => {
-                        alertDiv.remove();
-                    }, 300);
-                }, 5000);
+                }, 1000);
+            } else {
+                showAlert(`모델 전환 실패: ${data.message}`, 'danger');
             }
+        })
+        .catch(error => {
+            closeAllAlerts();
+            showAlert(`서버 통신 오류: ${error.message}`, 'danger');
+        });
+    }
+
+    // 모델 삭제 함수
+    function deleteModel() {
+        if (!selectedModelPath) {
+            return;
         }
-    </script>
-</body>
-</html> 
+        
+        // 모달 닫기
+        const deleteModal = bootstrap.Modal.getInstance(document.getElementById('deleteModelModal'));
+        deleteModal.hide();
+        
+        // 로딩 상태 표시
+        showAlert('모델 삭제 중입니다. 잠시만 기다려 주세요...', 'warning', 0);
+        
+        // 모델 삭제 API 호출
+        fetch('/api/yolo/delete-model/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model_path: selectedModelPath
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            // 로딩 알림 제거
+            closeAllAlerts();
+            
+            if (data.status === 'success') {
+                showAlert('모델이 성공적으로 삭제되었습니다.', 'success');
+                
+                // 모델 정보 다시 로드
+                setTimeout(() => {
+                    loadAvailableModels();
+                }, 1000);
+            } else {
+                showAlert(`모델 삭제 실패: ${data.message}`, 'danger');
+            }
+        })
+        .catch(error => {
+            closeAllAlerts();
+            showAlert(`서버 통신 오류: ${error.message}`, 'danger');
+        });
+    }
+
+    // 알림 메시지 표시 함수
+    function showAlert(message, type, duration = 5000) {
+        const alertArea = document.getElementById('alertArea');
+        const alertId = 'alert-' + Date.now();
+        
+        const alertHtml = `
+            <div id="${alertId}" class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${type === 'success' ? '<i class="fas fa-check-circle me-2"></i>' : 
+                 type === 'danger' ? '<i class="fas fa-exclamation-circle me-2"></i>' : 
+                 type === 'warning' ? '<i class="fas fa-exclamation-triangle me-2"></i>' : 
+                 '<i class="fas fa-info-circle me-2"></i>'}
+                ${message}
+                ${duration > 0 ? `<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>` : ''}
+            </div>
+        `;
+        
+        // 알림 추가
+        alertArea.insertAdjacentHTML('beforeend', alertHtml);
+        
+        // 지정된 시간 후 자동 제거 (0이면 유지)
+        if (duration > 0) {
+            setTimeout(() => {
+                const alertElement = document.getElementById(alertId);
+                if (alertElement) {
+                    // Bootstrap 알림 닫기
+                    const bsAlert = new bootstrap.Alert(alertElement);
+                    bsAlert.close();
+                }
+            }, duration);
+        }
+    }
+
+    // 모든 알림 닫기
+    function closeAllAlerts() {
+        const alertArea = document.getElementById('alertArea');
+        alertArea.innerHTML = '';
+    }
+</script>
+{% endblock %} 

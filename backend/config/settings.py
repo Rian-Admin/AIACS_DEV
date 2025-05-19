@@ -11,6 +11,11 @@ log_dir = os.path.join(BASE_DIR, 'logs')
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 
+# 비디오 녹화 디렉토리 생성
+video_recordings_dir = os.path.join(BASE_DIR, 'video_recordings')
+if not os.path.exists(video_recordings_dir):
+    os.makedirs(video_recordings_dir)
+
 # 기본 설정
 SECRET_KEY = 'd=j7y_#hw(dx315rzsmr@iqmk+d#jkvyus60)$by7=vyl=v*s^'
 DEBUG = True  # 디버그 모드 활성화
@@ -62,6 +67,29 @@ CORS_ALLOW_METHODS = [
     'PATCH',
     'POST',
     'PUT',
+]
+
+# 비디오 스트리밍에 필요한 헤더 허용
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'range',  # 범위 요청을 위한 헤더 허용
+]
+
+# 응답에 포함될 수 있는 헤더 설정
+CORS_EXPOSE_HEADERS = [
+    'accept-ranges',
+    'content-length',
+    'content-range',
+    'content-type',
+    'content-disposition',
 ]
 
 # X-Frame-Options 설정 (iframe 허용)
@@ -153,6 +181,32 @@ STATICFILES_DIRS = [
 ]
 STATIC_URL = '/static/'
 
+# 미디어 파일 설정 (업로드 및 녹화된 비디오)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR
+
+# 비디오 MIME 타입 설정 추가
+FILE_UPLOAD_PERMISSIONS = 0o644
+# MIME 타입 맵핑 설정
+MIME_TYPES = {
+    'mp4': 'video/mp4',
+    'webm': 'video/webm',
+    'ogg': 'video/ogg',
+    'avi': 'video/x-msvideo',
+    'mov': 'video/quicktime',
+    'wmv': 'video/x-ms-wmv',
+    'flv': 'video/x-flv',
+    'mkv': 'video/x-matroska',
+    'mpg': 'video/mpeg',
+    'mpeg': 'video/mpeg',
+}
+
+# 정적 파일 서빙 설정
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+]
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(BASE_DIR)
 
@@ -160,7 +214,7 @@ sys.path.append(BASE_DIR)
 
 LOGGING = {
     'version': 1,
-    'disable_existing_loggers': True,
+    'disable_existing_loggers': False,  # 기존 로거를 비활성화하지 않음
     'formatters': {
         'verbose': {
             'format': '{levelname} {asctime} {module} {message}',
@@ -168,6 +222,10 @@ LOGGING = {
         },
         'simple': {
             'format': '{levelname} {message}',
+            'style': '{',
+        },
+        'detailed': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
             'style': '{',
         },
     },
@@ -182,28 +240,49 @@ LOGGING = {
             'class': 'logging.NullHandler',
         },
         'console': {
-            'level': 'ERROR',
+            'level': 'DEBUG',  # 레벨을 DEBUG로 변경
             'class': 'logging.StreamHandler',
             'filters': ['suppress_opencv_ffmpeg'],
-            'formatter': 'simple',
+            'formatter': 'detailed',
         },
         'file': {
-            'level': 'ERROR',
+            'level': 'DEBUG',  # 레벨을 DEBUG로 변경
             'class': 'logging.FileHandler',
             'filename': os.path.join(log_dir, 'error.log'),
             'filters': ['suppress_opencv_ffmpeg'],
             'formatter': 'verbose',
         },
+        'camera_console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'detailed',
+        },
+        'camera_file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(log_dir, 'camera.log'),
+            'formatter': 'detailed',
+        },
     },
     'loggers': {
         '': {
-            'handlers': ['null'],
-            'level': 'CRITICAL',
-            'propagate': False,
+            'handlers': ['console', 'file'],  # 기본 핸들러 추가
+            'level': 'WARNING',
+            'propagate': True,
         },
         'django': {
             'handlers': ['console', 'file'],
-            'level': 'ERROR',
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'camera': {
+            'handlers': ['camera_console', 'camera_file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'camera.views.camera_management': {
+            'handlers': ['camera_console', 'camera_file'],
+            'level': 'DEBUG',
             'propagate': False,
         },
     },

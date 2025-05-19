@@ -1,4 +1,4 @@
-# Python Ä³½Ã ÆÄÀÏ 
+# Python Ä³ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ 
 __pycache__/ 
 *.py[cod] 
 *$py.class 
@@ -19,13 +19,13 @@ wheels/
 *.egg-info/ 
 .installed.cfg 
 *.egg 
-# Django °ü·Ã 
+# Django ï¿½ï¿½ï¿½ï¿½ 
 *.log 
 local_settings.py 
 db.sqlite3 
 db.sqlite3-journal 
 media 
-# °¡»óÈ¯°æ 
+# ï¿½ï¿½ï¿½ï¿½È¯ï¿½ï¿½ 
 venv/ 
 ENV/ 
 env/ 
@@ -36,18 +36,19 @@ npm-debug.log
 yarn-debug.log 
 yarn-error.log 
 .pnpm-debug.log 
-# Ä³½Ã µð·ºÅä¸® 
+# Ä³ï¿½ï¿½ ï¿½ï¿½ï¿½ä¸® 
 .cache/ 
 .npm 
 .eslintcache 
 .parcel-cache 
-# IDE °ü·Ã 
+# IDE ï¿½ï¿½ï¿½ï¿½ 
 .idea/ 
 .vscode/ 
 *.swp 
 *.swo 
 .DS_Store 
-# ±âÅ¸ 
+# ï¿½ï¿½Å¸ 
 *.bak 
 *.tmp 
 *.temp 
+*.mp4

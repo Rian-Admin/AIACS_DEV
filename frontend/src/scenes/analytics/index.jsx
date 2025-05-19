@@ -13,6 +13,9 @@ import ActivityChart from './components/ActivityChart';
 // 데이터 관련 임포트
 import { downloadCSV } from './utils/dataUtils';
 
+// 파일 상단에 추가
+const API_BASE_URL = process.env.REACT_APP_API_URL || '';
+
 /**
  * 분석 및 통계 컴포넌트
  * @param {Object} props 컴포넌트 속성
@@ -203,7 +206,7 @@ const Analytics = ({ language }) => {
       console.log('백엔드 API 호출 파라미터:', params);
       
       // URL이 백엔드 서버의 실제 URL을 가리키도록 수정
-      const API_BASE_URL = 'http://localhost:8000';
+      // const API_BASE_URL = 'http://localhost:8000';
       
       // 실제 백엔드 API 호출
       let detectionsResponse, bbResponse;

@@ -50,6 +50,9 @@ const neonGlowPlugin = {
 // Chart.js 컴포넌트에 플러그인 등록
 ChartJS.register(neonGlowPlugin);
 
+// 파일 상단에 추가
+const API_BASE_URL = process.env.REACT_APP_API_URL || '';
+
 /**
  * 사이버펑크 스타일 꺾은선 그래프 - 확대/축소 가능
  * @returns {JSX.Element}
@@ -72,7 +75,7 @@ const ActivityChart = () => {
         setLoading(true);
         
         // 백엔드 API에서 감지 데이터 가져오기
-        const response = await axios.get('http://localhost:8000/api/detections/filtered/', {
+        const response = await axios.get(`${API_BASE_URL}/api/detections/filtered/`, {
           params: {
             // 최근 3일 데이터만 조회
             date_from: formatDate(getDateDaysAgo(3)),

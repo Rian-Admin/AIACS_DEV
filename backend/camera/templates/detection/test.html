@@ -1,0 +1,1983 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>조류충돌방지시스템 - 모니터링 대시보드</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <!-- jQuery와 Bootstrap JS 추가 -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        /* 기본 색상 정의 (간소화됨) */
+        :root {
+            --primary: #2c3e50;
+            --secondary: #566573;
+            --dark: #1c2833;
+            --light: #ecf0f1;
+            --danger: #c0392b;
+            --warning: #d35400;
+            --card-bg: #f8f9fa;
+            --header-bg: #34495e;
+        }
+        
+        /* 일관된 테마 스타일 */
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .system-header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            margin-bottom: 0;
+        }
+        
+        .system-title {
+            font-weight: 600;
+            font-size: 1.4rem;
+            margin: 0;
+        }
+        
+        .system-subtitle {
+            font-weight: 300;
+            font-size: 0.9rem;
+            margin-top: 0.2rem;
+        }
+        
+        .nav-tabs {
+            background-color: #f8f9fa;
+            padding-top: 0.5rem;
+            border-bottom: 1px solid #dee2e6;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .nav-link {
+            color: #495057;
+            font-weight: 500;
+            padding: 0.7rem 1.5rem;
+            border-radius: 0.25rem 0.25rem 0 0;
+            transition: all 0.2s ease;
+        }
+        
+        .nav-link:hover {
+            background-color: rgba(13, 110, 253, 0.1);
+            color: #0d6efd;
+        }
+        
+        .nav-link.active {
+            font-weight: bold;
+            color: #0d6efd;
+            background-color: white;
+            border-color: #dee2e6 #dee2e6 #fff;
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
+        }
+        
+        /* 헤더 단순화 */
+        .dashboard-header {
+            background: var(--header-bg);
+            color: white;
+            padding: 0.8rem 0;
+            margin-bottom: 1rem;
+        }
+        
+        /* 카메라 그리드 간격 축소 */
+        .camera-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        /* 카메라 카드 단순화 */
+        .camera-card {
+            background: var(--card-bg);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid #ddd;
+        }
+        
+        .camera-header {
+            background: var(--primary);
+            color: white;
+            padding: 0.7rem 1rem;
+            font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .camera-title {
+            display: flex;
+            align-items: center;
+        }
+        
+        .camera-title i {
+            margin-right: 8px;
+            font-size: 1rem;
+        }
+        
+        .camera-status {
+            display: flex;
+            align-items: center;
+            font-size: 0.85rem;
+            background: rgba(255,255,255,0.15);
+            padding: 3px 10px;
+            border-radius: 4px;
+        }
+        
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        
+        .status-online {
+            background-color: #2ecc71;
+        }
+        
+        .status-offline {
+            background-color: #e74c3c;
+        }
+        
+        /* 카메라 피드 단순화 */
+        .camera-feed {
+            position: relative;
+            overflow: hidden;
+            width: 100%;
+            padding-top: 56.25%; /* 16:9 비율 (9 / 16 = 0.5625 = 56.25%) */
+            background: #111;
+        }
+        
+        .camera-feed img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        /* 전체화면 버튼 단순화 */
+        .fullscreen-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+            opacity: 0.8;
+            z-index: 10;
+        }
+        
+        /* 전체화면 모달 */
+        .fullscreen-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.9);
+            z-index: 1000;
+        }
+        
+        .fullscreen-content {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .fullscreen-image {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+        }
+        
+        .close-fullscreen {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            color: white;
+            font-size: 30px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 1001;
+        }
+        
+        .camera-info-fullscreen {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        /* 메타데이터 표시 단순화 */
+        .camera-meta {
+            padding: 0.6rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #eee;
+            background: #f8f9fa;
+        }
+        
+        .camera-info {
+            display: flex;
+            align-items: center;
+        }
+        
+        .info-item {
+            display: flex;
+            align-items: center;
+            margin-right: 16px;
+            font-size: 0.9rem;
+        }
+        
+        .info-item i {
+            margin-right: 6px;
+            color: var(--primary);
+        }
+        
+        /* 로딩 상태 단순화 */
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            display: none;
+            font-weight: 500;
+            text-align: center;
+        }
+        
+        .loading i {
+            display: block;
+            font-size: 1.5rem;
+            margin-bottom: 0.4rem;
+        }
+        
+        /* 로딩 아이콘 애니메이션 제거 */
+        .fa-circle-notch:before {
+            content: "\f1ce";
+        }
+        
+        /* 푸터 단순화 */
+        .footer {
+            background: var(--dark);
+            color: var(--light);
+            padding: 1rem 0;
+            text-align: center;
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+        }
+        
+        /* YOLO 설정 패널 단순화 */
+        .card-header.bg-primary {
+            background-color: var(--primary) !important;
+        }
+        
+        /* 미니 컨트롤 추가 */
+        .mini-controls {
+            margin-bottom: 1rem;
+            background: #e9ecef;
+            padding: 0.5rem;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        /* 반응형 조정 */
+        @media (max-width: 768px) {
+            .camera-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .camera-feed {
+                height: 280px;
+            }
+        }
+
+        /* 카메라 관리 페이지 특화 스타일 */
+        .form-control:focus, .form-select:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+        
+        #cameraForm {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        /* 데이터베이스 페이지 특화 스타일 */
+        .table-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            overflow-x: auto;
+        }
+        
+        /* 모델 관리 특화 스타일 */
+        .model-card {
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        }
+        
+        .active-model {
+            border: 2px solid #2ecc71;
+            background-color: rgba(46, 204, 113, 0.1);
+        }
+        
+        .upload-area {
+            background-color: #fff;
+            border: 2px dashed #ddd;
+            border-radius: 10px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            transition: all 0.3s ease;
+        }
+        
+        .upload-area:hover {
+            border-color: #0d6efd;
+            cursor: pointer;
+        }
+
+        /* 스피커 관리 스타일 */
+        .status-card {
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1.5rem;
+            background-color: white;
+        }
+        
+        .volume-slider {
+            width: 100%;
+        }
+        
+        .sound-card {
+            cursor: pointer;
+        }
+        
+        /* 기울어진 배경을 가진 그라데이션 헤더 */
+        .bg-gradient-primary {
+            background: linear-gradient(45deg, #4e73df, #2e59d9);
+        }
+
+        /* 가드존 설정 스타일 */
+        .guard-zone-container {
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 15px;
+            background-color: #f8f9fa;
+        }
+        
+        #guardZoneCanvas {
+            background-color: #333;
+            border-radius: 5px;
+            display: block;
+            margin: 0 auto;
+            cursor: crosshair;
+        }
+        
+        .guard-zone-controls {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+
+        /* PTZ 컨트롤러 스타일 */
+        .ptz-controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .ptz-btn {
+            width: 60px;
+            height: 60px;
+            margin: 6px;
+            border-radius: 50%;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .ptz-center-btn {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+        }
+        
+        .position-info {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 헤더 -->
+    <header class="dashboard-header">
+        <div class="container">
+            <h1 class="system-title">
+                <i class="fas fa-dove"></i> 조류충돌방지시스템
+            </h1>
+            <p class="system-subtitle">AI 기반 실시간 모니터링 대시보드</p>
+        </div>
+    </header>
+    
+    <!-- 메인 컨텐츠 -->
+    <div class="container">
+        <!-- 탭 네비게이션 -->
+        <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+                <a class="nav-link active" href="#main-dashboard" data-tab="main-dashboard">메인 대시보드</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#camera-management" data-tab="camera-management">카메라 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#db-management" data-tab="db-management">데이터베이스 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#model-management" data-tab="model-management">모델 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#speaker-management" data-tab="speaker-management">스피커 관리</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#azimuth-setting" data-tab="azimuth-setting">가드존 설정</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#ptz-controller" data-tab="ptz-controller">PTZ 컨트롤러</a>
+            </li>
+        </ul>
+
+        <!-- 탭 콘텐츠 영역 -->
+        <div class="tab-content">
+            <!-- 메인 대시보드 탭 (기본 표시) -->
+            <div class="tab-pane active" id="main-dashboard">
+                <!-- 기존 컨텐츠를 이 탭으로 이동 -->
+                <!-- 미니 컨트롤 추가 -->
+                <div class="mini-controls">
+                    <div>
+                        <span><i class="fas fa-video"></i> 카메라 상태: </span>
+                        <span class="badge badge-success">온라인: <span id="onlineCount">0</span></span>
+                        <span class="badge badge-danger ml-2">오프라인: <span id="offlineCount">0</span></span>
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary" id="refreshAllBtn">
+                            <i class="fas fa-sync-alt"></i> 모든 카메라 새로고침
+                        </button>
+                    </div>
+                </div>
+
+                <!-- YOLO 설정 컨트롤 패널 -->
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-cog"></i> YOLO 모델 설정
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="confThreshold">
+                                        <i class="fas fa-percentage"></i> Confidence Threshold
+                                        <span id="confValue" class="badge badge-primary">0.25</span>
+                                    </label>
+                                    <input type="range" class="form-control-range" id="confThreshold" 
+                                           min="0.05" max="0.95" step="0.05" value="0.25">
+                                    <small class="form-text text-muted">
+                                        낮은 값 (0.05): 더 많은 객체 감지, 오탐지 증가<br>
+                                        높은 값 (0.95): 확실한 객체만 감지, 탐지율 감소
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="card-title">모델 정보</h6>
+                                        <div id="modelInfo">
+                                            <p><i class="fas fa-sync-alt"></i> 모델 정보 로딩 중...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 카메라 그리드 -->
+                <div class="camera-grid">
+                    {% for camera_id, info in camera_info.items %}
+                    <div class="camera-card">
+                        <div class="camera-header">
+                            <div class="camera-title">
+                                <i class="fas fa-video"></i>
+                                <span>카메라 {{ camera_id }} - {{ info.location }}</span>
+                            </div>
+                            <div class="camera-status" id="status{{ camera_id }}">
+                                <div class="status-indicator status-online"></div>
+                                <span>온라인</span>
+                            </div>
+                        </div>
+                        <div class="camera-feed" id="camera{{ camera_id }}Container">
+                            <img id="camera{{ camera_id }}Image" src="{% url 'camera_feed' camera_id=camera_id %}" alt="카메라 {{ camera_id }} 피드">
+                            <button class="fullscreen-btn" onclick="openFullscreen({{ camera_id }})">
+                                <i class="fas fa-expand"></i>
+                            </button>
+                            <div class="loading" id="loading{{ camera_id }}">
+                                <i class="fas fa-sync-alt"></i>
+                                <div>스트림 연결 중...</div>
+                            </div>
+                        </div>
+                        <div class="camera-meta">
+                            <div class="camera-info">
+                                <div class="info-item">
+                                    <i class="fas fa-clock"></i>
+                                </div>
+                                <button class="btn btn-sm btn-outline-secondary ptz-control-btn" data-id="{{ camera_id }}">
+                                    <i class="fas fa-video"></i> PTZ
+                                </button>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary" onclick="refreshCamera({{ camera_id }})">
+                                    <i class="fas fa-sync-alt"></i> 새로고침
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="openFullscreen({{ camera_id }})">
+                                    <i class="fas fa-expand"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <!-- 다른 탭들을 위한 빈 컨테이너들 -->
+            <div class="tab-pane" id="camera-management">
+                <div class="loading-content text-center p-5">
+                    <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                    <h4>카메라 관리 컨텐츠 로딩 중...</h4>
+                </div>
+            </div>
+            
+            <div class="tab-pane" id="db-management">
+                <div class="loading-content text-center p-5">
+                    <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                    <h4>데이터베이스 관리 컨텐츠 로딩 중...</h4>
+                </div>
+            </div>
+            
+            <div class="tab-pane" id="model-management">
+                <div class="loading-content text-center p-5">
+                    <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                    <h4>모델 관리 컨텐츠 로딩 중...</h4>
+                </div>
+            </div>
+            
+            <div class="tab-pane" id="speaker-management">
+                <div class="loading-content text-center p-5">
+                    <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                    <h4>스피커 관리 컨텐츠 로딩 중...</h4>
+                </div>
+            </div>
+            
+            <div class="tab-pane" id="azimuth-setting">
+                <div class="loading-content text-center p-5">
+                    <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                    <h4>가드존 설정 컨텐츠 로딩 중...</h4>
+                </div>
+            </div>
+            
+            <div class="tab-pane" id="ptz-controller">
+                <div class="loading-content text-center p-5">
+                    <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                    <h4>PTZ 컨트롤러 컨텐츠 로딩 중...</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 전체화면 모달 -->
+    <div id="fullscreenModal" class="fullscreen-modal">
+        <span class="close-fullscreen" onclick="closeFullscreen()">&times;</span>
+        <div class="fullscreen-content">
+            <img id="fullscreenImage" class="fullscreen-image" src="" alt="전체화면 카메라">
+            <div id="cameraInfoFullscreen" class="camera-info-fullscreen">
+                <div id="cameraIdFullscreen"></div>
+                <div id="cameraSensorFullscreen"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 푸터 -->
+    <footer class="footer">
+        <div class="container">
+            <div>AI Anti-Collision System © 2024 조류충돌방지시스템</div>
+        </div>
+    </footer>
+
+    <!-- PTZ 제어 모달 -->
+    <div class="modal fade" id="ptzControlModal" tabindex="-1" aria-labelledby="ptzControlModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="ptzControlModalLabel">카메라 PTZ 제어</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-12 text-center">
+                            <h6 id="ptzCameraInfo"></h6>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="ptz-controls text-center">
+                                <div class="mb-3">
+                                    <button class="btn btn-outline-primary ptz-btn" data-direction="UP">
+                                        <i class="fas fa-chevron-up"></i>
+                                    </button>
+                                </div>
+                                <div class="d-flex justify-content-center mb-3">
+                                    <button class="btn btn-outline-primary ptz-btn mr-3" data-direction="LEFT">
+                                        <i class="fas fa-chevron-left"></i>
+                                    </button>
+                                    <button class="btn btn-outline-primary ptz-btn ml-3" data-direction="RIGHT">
+                                        <i class="fas fa-chevron-right"></i>
+                                    </button>
+                                </div>
+                                <div>
+                                    <button class="btn btn-outline-primary ptz-btn" data-direction="DOWN">
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="zoom-controls text-center">
+                                <div class="mb-3">
+                                    <button class="btn btn-outline-primary ptz-btn" data-direction="ZOOM_IN">
+                                        <i class="fas fa-search-plus"></i> 확대
+                                    </button>
+                                </div>
+                                <div class="mb-3">
+                                    <button class="btn btn-outline-primary ptz-btn" data-direction="ZOOM_OUT">
+                                        <i class="fas fa-search-minus"></i> 축소
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="ptz-status mt-3">
+                                <div class="alert alert-info">
+                                    <div>상태: <span id="ptzStatus">대기 중</span></div>
+                                    <div>위치: <span id="ptzPosition">정보 없음</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">닫기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수 선언
+        let currentFullscreenCamera = null;
+        let fullscreenUpdateInterval = null;
+        let currentPtzCameraId = null;  // PTZ 관련 변수 추가
+        let positionUpdateTimer = null; // PTZ 관련 변수 추가
+        
+        // 전체화면 관련 함수들
+        function openFullscreen(cameraId) {
+            currentFullscreenCamera = cameraId;
+            
+            const modal = document.getElementById('fullscreenModal');
+            const fullscreenImage = document.getElementById('fullscreenImage');
+            const cameraIdElement = document.getElementById('cameraIdFullscreen');
+            
+            const imgId = 'camera' + cameraId + 'Image';
+            let originalImage = document.getElementById(imgId);
+            
+            if (originalImage) {
+                // 원본 이미지의 소스를 그대로 사용 (추가 매개변수 없이)
+                fullscreenImage.src = originalImage.src;
+            } else {
+                const containerEl = document.getElementById('camera' + cameraId + 'Container');
+                if (containerEl) {
+                    const imgInContainer = containerEl.querySelector('img');
+                    if (imgInContainer) {
+                        fullscreenImage.src = imgInContainer.src;
+                    }
+                }
+            }
+            
+            cameraIdElement.textContent = '카메라 ' + cameraId;
+            modal.style.display = 'block';
+            
+            if (fullscreenUpdateInterval) {
+                clearInterval(fullscreenUpdateInterval);
+            }
+            // 업데이트 주기를 100ms로 단축 (1000ms → 100ms)
+            fullscreenUpdateInterval = setInterval(function() {
+                updateFullscreenImage(cameraId);
+            }, 100);
+        }
+        
+        function updateFullscreenImage(cameraId) {
+            if (cameraId === undefined) {
+                cameraId = currentFullscreenCamera;
+            }
+            
+            if (cameraId === null) return;
+            
+            const fullscreenImage = document.getElementById('fullscreenImage');
+            const imgId = 'camera' + cameraId + 'Image';
+            const originalImage = document.getElementById(imgId);
+            
+            if (originalImage) {
+                // 원본 이미지 소스 그대로 복사 (타임스탬프 없이)
+                fullscreenImage.src = originalImage.src;
+            }
+        }
+        
+        function closeFullscreen() {
+            const modal = document.getElementById('fullscreenModal');
+            modal.style.display = 'none';
+            
+            // 업데이트 인터벌 정리
+            if (fullscreenUpdateInterval) {
+                clearInterval(fullscreenUpdateInterval);
+                fullscreenUpdateInterval = null;
+            }
+            
+            currentFullscreenCamera = null;
+        }
+        
+        // 카메라 새로고침 함수
+        function refreshCamera(cameraId) {
+            const img = document.getElementById('camera' + cameraId + 'Image');
+            const loading = document.getElementById('loading' + cameraId);
+            
+            loading.style.display = 'block';
+            // Django 템플릿 태그를 사용하여 URL 생성
+            const baseUrl = "{% url 'camera_feed' camera_id=1 %}".replace('1', cameraId);
+            img.src = baseUrl + '?refresh=' + new Date().getTime();
+        }
+        
+        // 모든 카메라 새로고침
+        function refreshAllCameras() {
+            const cameras = document.querySelectorAll('.camera-card');
+            cameras.forEach(card => {
+                const cameraId = card.querySelector('.camera-title span').textContent.split(' ')[1];
+                refreshCamera(cameraId);
+            });
+        }
+        
+        // PTZ 위치 정보 가져오기 함수
+        function getPtzPosition(cameraId) {
+            fetch(`/api/ptz/position/${cameraId}/`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // 위치 정보 표시
+                        const pos = data.position;
+                        let posText = '';
+                        
+                        if (pos.pan !== undefined && pos.tilt !== undefined) {
+                            posText += `Pan: ${pos.pan.toFixed(2)}, Tilt: ${pos.tilt.toFixed(2)}`;
+                        }
+                        
+                        if (pos.zoom !== undefined) {
+                            posText += `, Zoom: ${pos.zoom.toFixed(2)}`;
+                        }
+                        
+                        document.getElementById('ptzPosition').textContent = posText || '정보 없음';
+                        
+                        // 상태 업데이트
+                        document.getElementById('ptzStatus').textContent = data.is_moving ? '이동 중' : '대기 중';
+                        
+                        // 위치 정보 주기적 업데이트
+                        if (!positionUpdateTimer) {
+                            positionUpdateTimer = setInterval(function() {
+                                if (currentPtzCameraId) {
+                                    getPtzPosition(currentPtzCameraId);
+                                }
+                            }, 1000); // 1초마다 업데이트
+                        }
+                    } else {
+                        document.getElementById('ptzPosition').textContent = '정보 없음';
+                        document.getElementById('ptzStatus').textContent = '오류';
+                        showNotification('위치 정보를 가져올 수 없습니다: ' + data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('ptzPosition').textContent = '정보 없음';
+                    document.getElementById('ptzStatus').textContent = '오류';
+                    showNotification('위치 정보를 가져오는 중 오류가 발생했습니다: ' + error.message, 'error');
+                });
+        }
+        
+        // PTZ 제어 함수
+        function controlPtz(cameraId, direction, isContinuous) {
+            fetch('/api/ptz/control/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    camera_id: cameraId,
+                    direction: direction,
+                    is_continuous: isContinuous,
+                    speed: 0.7
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    document.getElementById('ptzStatus').textContent = data.is_moving ? '이동 중' : '대기 중';
+                    // isContinuous가 false일 때는 메시지 표시 안 함 (정지 명령)
+                    if (isContinuous) {
+                        showNotification(data.message, 'success');
+                    }
+                } else {
+                    document.getElementById('ptzStatus').textContent = '오류';
+                    showNotification('PTZ 제어 실패: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                document.getElementById('ptzStatus').textContent = '오류';
+                showNotification('PTZ 제어 중 오류가 발생했습니다: ' + error.message, 'error');
+            });
+        }
+        
+        // DOM 로드 완료 후 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            // ESC 키로 전체화면 닫기
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    closeFullscreen();
+                }
+            });
+            
+            // 탭 링크에 이벤트 리스너 추가
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    // 이미 활성화된 탭은 무시
+                    if (this.classList.contains('active')) {
+                        return;
+                    }
+                    
+                    const tabId = this.getAttribute('data-tab');
+                    
+                    // 모든 탭 비활성화
+                    document.querySelectorAll('.nav-link').forEach(tab => {
+                        tab.classList.remove('active');
+                    });
+                    
+                    // 모든 탭 컨텐츠 숨기기
+                    document.querySelectorAll('.tab-pane').forEach(content => {
+                        content.classList.remove('active');
+                    });
+                    
+                    // 선택한 탭 활성화
+                    this.classList.add('active');
+                    document.getElementById(tabId).classList.add('active');
+                    
+                    // 실제 탭 컨텐츠가 로드되지 않았으면 AJAX로 불러오기
+                    if (tabId !== 'main-dashboard') {
+                        // 실제 애플리케이션에서는 이 부분을 실제 탭 컨텐츠를 가져오는 AJAX 호출로 구현
+                        loadTabContent(tabId);
+                    }
+                });
+            });
+            
+            // 모든 카메라 새로고침 버튼 이벤트
+            document.getElementById('refreshAllBtn').addEventListener('click', refreshAllCameras);
+            
+            // 각 카메라 설정
+            {% for camera_id in cameras %}
+            setupCamera({{ camera_id }});
+            {% endfor %}
+            
+            // YOLO 모델 정보 로드
+            loadYoloModelInfo();
+            
+            // Confidence Threshold 슬라이더 설정
+            setupConfidenceSlider();
+            
+            // 카메라 상태 카운터 초기화
+            updateCameraCounters();
+            
+            // PTZ 관련 이벤트 리스너 추가
+            // PTZ 버튼 이벤트 설정
+            document.querySelectorAll('.ptz-control-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const cameraId = this.getAttribute('data-id');
+                    
+                    // 모달에 카메라 정보 설정
+                    document.getElementById('ptzCameraInfo').textContent = `카메라 ID: ${cameraId}`;
+                    document.getElementById('ptzStatus').textContent = '대기 중';
+                    document.getElementById('ptzPosition').textContent = '정보 가져오는 중...';
+                    
+                    // 모달 표시
+                    $('#ptzControlModal').modal('show');
+                    
+                    // 현재 선택된 카메라 ID 저장
+                    currentPtzCameraId = cameraId;
+                    
+                    // 현재 카메라 위치 정보 가져오기
+                    getPtzPosition(cameraId);
+                });
+            });
+            
+            // PTZ 방향 버튼 이벤트 설정
+            document.querySelectorAll('.ptz-btn').forEach(btn => {
+                // 마우스 누를 때
+                btn.addEventListener('mousedown', function(e) {
+                    e.preventDefault();
+                    const direction = this.getAttribute('data-direction');
+                    
+                    if (currentPtzCameraId) {
+                        controlPtz(currentPtzCameraId, direction, true);
+                    }
+                });
+                
+                btn.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    const direction = this.getAttribute('data-direction');
+                    
+                    if (currentPtzCameraId) {
+                        controlPtz(currentPtzCameraId, direction, true);
+                    }
+                });
+                
+                // 마우스 뗄 때
+                btn.addEventListener('mouseup', function(e) {
+                    e.preventDefault();
+                    const direction = this.getAttribute('data-direction');
+                    
+                    if (currentPtzCameraId) {
+                        controlPtz(currentPtzCameraId, direction, false);
+                    }
+                });
+                
+                btn.addEventListener('touchend', function(e) {
+                    e.preventDefault();
+                    const direction = this.getAttribute('data-direction');
+                    
+                    if (currentPtzCameraId) {
+                        controlPtz(currentPtzCameraId, direction, false);
+                    }
+                });
+                
+                // 마우스가 버튼 밖으로 나갔을 때
+                btn.addEventListener('mouseleave', function(e) {
+                    e.preventDefault();
+                    const direction = this.getAttribute('data-direction');
+                    
+                    if (currentPtzCameraId) {
+                        controlPtz(currentPtzCameraId, direction, false);
+                    }
+                });
+            });
+            
+            // PTZ 제어 모달이 닫힐 때 PTZ 동작 정지
+            $('#ptzControlModal').on('hidden.bs.modal', function() {
+                if (currentPtzCameraId) {
+                    // 정지 명령 전송
+                    controlPtz(currentPtzCameraId, 'LEFT', false);
+                }
+                
+                // 위치 정보 업데이트 타이머 정리
+                if (positionUpdateTimer) {
+                    clearInterval(positionUpdateTimer);
+                    positionUpdateTimer = null;
+                }
+            });
+        });
+        
+        function setupCamera(cameraId) {
+            const img = document.getElementById('camera' + cameraId + 'Image');
+            const loading = document.getElementById('loading' + cameraId);
+            const status = document.getElementById('status' + cameraId);
+            
+            // 상태 초기화
+            updateCameraStatus(cameraId, 'connecting');
+            
+            // 이미지 로딩 시작 시
+            img.addEventListener('loadstart', function() {
+                loading.style.display = 'block';
+                updateCameraStatus(cameraId, 'connecting');
+            });
+            
+            // 이미지 로드 완료 시
+            img.addEventListener('load', function() {
+                loading.style.display = 'none';
+                updateCameraStatus(cameraId, 'online');
+                updateCameraCounters();
+            });
+            
+            // 이미지 로드 오류 시
+            img.addEventListener('error', function() {
+                loading.style.display = 'block';
+                updateCameraStatus(cameraId, 'offline');
+                updateCameraCounters();
+                
+                // 3초 후 다시 시도
+                setTimeout(() => {
+                    // URL에 타임스탬프 추가하여 캐시 방지
+                    const baseUrl = "{% url 'camera_feed' camera_id=1 %}".replace('1', cameraId);
+                    img.src = baseUrl + '?t=' + new Date().getTime();
+                }, 3000);
+            });
+        }
+            
+        // 카메라 상태 업데이트
+        function updateCameraStatus(cameraId, status) {
+            const statusEl = document.getElementById('status' + cameraId);
+            const indicator = statusEl.querySelector('.status-indicator');
+            const text = statusEl.querySelector('span');
+            
+            indicator.className = 'status-indicator';
+            
+            if (status === 'online') {
+                indicator.classList.add('status-online');
+                text.textContent = '온라인';
+                statusEl.style.backgroundColor = 'rgba(46, 204, 113, 0.2)';
+            } else if (status === 'offline') {
+                indicator.classList.add('status-offline');
+                text.textContent = '오프라인';
+                statusEl.style.backgroundColor = 'rgba(231, 76, 60, 0.2)';
+            } else {
+                indicator.style.backgroundColor = '#f39c12';
+                text.textContent = '연결 중...';
+                statusEl.style.backgroundColor = 'rgba(243, 156, 18, 0.2)';
+            }
+        }
+        
+        // 카메라 상태 카운터 업데이트
+        function updateCameraCounters() {
+            const onlineCount = document.querySelectorAll('.status-indicator.status-online').length;
+            const offlineCount = document.querySelectorAll('.status-indicator.status-offline').length;
+            
+            document.getElementById('onlineCount').textContent = onlineCount;
+            document.getElementById('offlineCount').textContent = offlineCount;
+        }
+            
+        // YOLO 모델 정보 로드 함수
+        function loadYoloModelInfo() {
+            fetch('/api/yolo/info/')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateModelInfo(data.model_info);
+                        
+                        // 슬라이더 값 업데이트
+                        const confThreshold = document.getElementById('confThreshold');
+                        const confValue = document.getElementById('confValue');
+                        
+                        if (data.model_info.conf_threshold !== undefined) {
+                            confThreshold.value = data.model_info.conf_threshold;
+                            confValue.textContent = data.model_info.conf_threshold;
+                        }
+                    } else {
+                        document.getElementById('modelInfo').innerHTML = 
+                            `<div class="alert alert-danger">모델 정보를 불러올 수 없습니다</div>`;
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('modelInfo').innerHTML = 
+                        `<div class="alert alert-danger">오류: ${error.message}</div>`;
+                });
+        }
+            
+        // 모델 정보 표시 업데이트
+        function updateModelInfo(info) {
+            const modelInfoHtml = `
+                <table class="table table-sm">
+                    <tr>
+                        <td><strong>모델 경로:</strong></td>
+                        <td>${info.model_path}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>장치:</strong></td>
+                        <td>${info.device}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>추론 시간:</strong></td>
+                        <td>${info.avg_inference_time.toFixed(2)} ms</td>
+                    </tr>
+                </table>
+            `;
+            document.getElementById('modelInfo').innerHTML = modelInfoHtml;
+        }
+            
+        // Confidence 슬라이더 설정
+        function setupConfidenceSlider() {
+            const slider = document.getElementById('confThreshold');
+            const valueDisplay = document.getElementById('confValue');
+            
+            // 슬라이더 값 변경 시 표시 업데이트
+            slider.addEventListener('input', function() {
+                valueDisplay.textContent = this.value;
+            });
+            
+            // 슬라이더 값 변경 완료 시 서버에 업데이트
+            slider.addEventListener('change', function() {
+                updateConfThreshold(this.value);
+            });
+        }
+            
+        // Confidence Threshold 업데이트 함수
+        function updateConfThreshold(value) {
+            // 설정 변경 중임을 표시
+            const valueDisplay = document.getElementById('confValue');
+            valueDisplay.innerHTML = `<i class="fas fa-sync-alt"></i>`;
+            
+            // API 호출하여 값 변경
+            fetch('/api/yolo/set-conf/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ conf: parseFloat(value) })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    valueDisplay.textContent = data.new_conf;
+                    showNotification('Confidence threshold가 변경되었습니다', 'success');
+                    loadYoloModelInfo();
+                } else {
+                    valueDisplay.textContent = value;
+                    showNotification('설정 변경 실패: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                valueDisplay.textContent = value;
+                showNotification('서버 오류: ' + error.message, 'error');
+            });
+        }
+            
+        // 알림 표시 함수 (단순화됨)
+        function showNotification(message, type) {
+            // 이미 표시된 알림이 있으면 제거
+            const existingAlert = document.querySelector('.alert-notification');
+            if (existingAlert) {
+                existingAlert.remove();
+            }
+            
+            // 새 알림 생성
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type === 'error' ? 'danger' : 'success'} alert-notification`;
+            alertDiv.style.position = 'fixed';
+            alertDiv.style.top = '20px';
+            alertDiv.style.right = '20px';
+            alertDiv.style.zIndex = '9999';
+            alertDiv.style.minWidth = '300px';
+            alertDiv.style.padding = '0.5rem 1rem';
+            alertDiv.style.fontSize = '0.9rem';
+            alertDiv.innerHTML = `
+                <button type="button" class="close" data-dismiss="alert">&times;</button>
+                <i class="fas fa-${type === 'error' ? 'exclamation-circle' : 'check-circle'}"></i> ${message}
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            // 3초 후 자동으로 사라짐
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 3000);
+        }
+
+        // 탭 컨텐츠를 비동기적으로 로드하는 함수 (수정된 부분)
+        function loadTabContent(tabId) {
+            const tabContent = document.getElementById(tabId);
+            
+            // 로딩 표시
+            tabContent.innerHTML = `
+                <div class="loading-content text-center p-5">
+                    <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                    <h4>컨텐츠 로딩 중...</h4>
+                </div>
+            `;
+            
+            // 탭 ID에 따라 적절한 HTML 내용 반환
+            switch(tabId) {
+                case 'camera-management':
+                    // 카메라 관리 페이지 내용
+                    const cameraHTML = `
+                    <div class="container container-main">
+                        <h1 class="mb-4">카메라 관리</h1>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-12 d-flex justify-content-end mb-3">
+                                <button id="refreshCacheBtn" class="btn btn-warning me-3">
+                                    <i class="fas fa-sync-alt"></i> 카메라 캐시 초기화
+                                </button>
+                            </div>
+                            <div class="col-md-12">
+                                <div id="cameraForm">
+                                    <h3 class="mb-3" id="formTitle">카메라 추가</h3>
+                                    <form id="addCameraForm">
+                                        <input type="hidden" id="editMode" value="false">
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label for="camera_id" class="form-label">카메라 ID</label>
+                                                <input type="text" class="form-control" id="camera_id" required>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label for="wind_turbine_id" class="form-label">풍력 터빈 ID</label>
+                                                <input type="text" class="form-control" id="wind_turbine_id" required>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label for="viewing_angle" class="form-label">시야각 (도)</label>
+                                                <input type="number" class="form-control" id="viewing_angle" min="0" max="360" required>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label for="installation_direction" class="form-label">설치 방향</label>
+                                                <select class="form-select" id="installation_direction" required>
+                                                    <option value="북">북</option>
+                                                    <option value="북동">북동</option>
+                                                    <option value="동">동</option>
+                                                    <option value="남동">남동</option>
+                                                    <option value="남">남</option>
+                                                    <option value="남서">남서</option>
+                                                    <option value="서">서</option>
+                                                    <option value="북서">북서</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label for="installation_height" class="form-label">설치 높이 (m)</label>
+                                                <input type="number" class="form-control" id="installation_height" min="0" step="0.1" required>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label for="status" class="form-label">상태</label>
+                                                <select class="form-select" id="status" required>
+                                                    <option value="active">활성</option>
+                                                    <option value="inactive">비활성</option>
+                                                    <option value="maintenance">유지보수</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="rtsp_address" class="form-label">RTSP 주소 또는 비디오 파일</label>
+                                            <div class="input-group">
+                                                <input type="text" class="form-control" id="rtsp_address" required>
+                                                <button type="button" class="btn btn-outline-secondary" id="fileSelectBtn">
+                                                    <i class="fas fa-folder-open"></i> 파일 선택
+                                                </button>
+                                                <input type="file" id="videoFileInput" accept="video/*" style="display: none;" />
+                                            </div>
+                                            <div class="form-text">RTSP 주소를 직접 입력하거나 로컬 비디오 파일을 선택하세요.</div>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <button type="submit" class="btn btn-primary" id="submitBtn">카메라 추가</button>
+                                            <button type="button" class="btn btn-secondary d-none" id="cancelBtn">취소</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row" id="cameraList">
+                            <h3 class="mb-3">카메라 목록</h3>
+                            <!-- 카메라 카드가 여기에 생성됩니다 -->
+                        </div>
+                    </div>
+
+                    <!-- 삭제 확인 모달 -->
+                    <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">카메라 삭제 확인</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p>정말로 이 카메라를 삭제하시겠습니까?</p>
+                                    <p class="text-danger">이 작업은 되돌릴 수 없습니다.</p>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                                    <button type="button" class="btn btn-danger" id="confirmDelete">삭제</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                    tabContent.innerHTML = cameraHTML;
+                    // 카메라 목록 로드 및 이벤트 핸들러 설정
+                    initCameraManagement();
+                    return;
+                    
+                case 'db-management':
+                    // 데이터베이스 관리 페이지 내용
+                    const dbHTML = `
+                    <div class="container container-main">
+                        <h1 class="mb-4">데이터베이스 기록</h1>
+                        
+                        <!-- DB 대시보드 -->
+                        <div class="row mb-4">
+                            <div class="col-md-3">
+                                <div class="dashboard-card">
+                                    <div class="card-title">총 감지 기록</div>
+                                    <div class="card-value" id="totalDetections">0</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="dashboard-card">
+                                    <div class="card-title">오늘의 감지 기록</div>
+                                    <div class="card-value" id="todayDetections">0</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="dashboard-card">
+                                    <div class="card-title">총 카메라 수</div>
+                                    <div class="card-value" id="totalCameras">0</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="dashboard-card">
+                                    <div class="card-title">DB 상태</div>
+                                    <div class="d-flex align-items-center">
+                                        <div class="card-value" id="dbStatus">
+                                            <span class="status-badge status-badge-success">정상</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 테이블 선택 탭 -->
+                        <ul class="nav nav-tabs" id="dbTables" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="detections-tab" data-bs-toggle="tab" data-bs-target="#detections" type="button" role="tab" aria-controls="detections" aria-selected="true">감지 기록</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="bird-analysis-tab" data-bs-toggle="tab" data-bs-target="#bird-analysis" type="button" role="tab" aria-controls="bird-analysis" aria-selected="false">조류 분석</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="cameras-tab" data-bs-toggle="tab" data-bs-target="#cameras" type="button" role="tab" aria-controls="cameras" aria-selected="false">카메라</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="birds-tab" data-bs-toggle="tab" data-bs-target="#birds" type="button" role="tab" aria-controls="birds" aria-selected="false">조류 클래스</button>
+                            </li>
+                        </ul>
+
+                        <!-- 탭 내용 -->
+                        <div class="tab-content" id="dbTablesContent">
+                            <!-- 감지 기록 탭 -->
+                            <div class="tab-pane fade show active" id="detections" role="tabpanel" aria-labelledby="detections-tab">
+                                <div class="filter-container mb-3">
+                                    <div class="row">
+                                        <div class="col-md-3 mb-2">
+                                            <label for="detectionDateFrom" class="form-label">시작일</label>
+                                            <input type="date" class="form-control" id="detectionDateFrom">
+                                        </div>
+                                        <div class="col-md-3 mb-2">
+                                            <label for="detectionDateTo" class="form-label">종료일</label>
+                                            <input type="date" class="form-control" id="detectionDateTo">
+                                        </div>
+                                        <div class="col-md-3 mb-2">
+                                            <label for="detectionCamera" class="form-label">카메라</label>
+                                            <select class="form-select" id="detectionCamera">
+                                                <option value="">모든 카메라</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3 d-flex align-items-end">
+                                            <button id="filterDetections" class="btn btn-primary me-2">필터링</button>
+                                            <button id="exportDetectionsCsv" class="btn btn-success btn-sm">
+                                                <i class="fas fa-file-csv"></i> CSV
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="table-container">
+                                    <table class="table table-striped table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th></th>
+                                                <th>ID</th>
+                                                <th>감지 시간</th>
+                                                <th>바운딩 박스 수</th>
+                                                <th>카메라 ID</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="filteredDetectionsTableBody">
+                                            <tr>
+                                                <td colspan="5" class="text-center">데이터를 불러오는 중입니다...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- 다른 탭들은 페이지 길이를 고려하여 생략 -->
+                        </div>
+                    </div>
+                    `;
+                    tabContent.innerHTML = dbHTML;
+                    // 데이터베이스 관리 페이지 초기화
+                    initDbManagement();
+                    return;
+                
+                case 'model-management':
+                    // 모델 관리 페이지 내용
+                    const modelHTML = `
+                    <div class="container mt-4">
+                        <!-- 알림 메시지 영역 -->
+                        <div id="alertArea"></div>
+
+                        <!-- 현재 모델 정보 -->
+                        <div class="card mb-4">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0"><i class="fas fa-info-circle"></i> 현재 사용 중인 모델 정보</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="currentModelInfo">
+                                    <div class="d-flex justify-content-center">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">로딩 중...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 모델 업로드 영역 -->
+                        <div class="card mb-4">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0"><i class="fas fa-upload"></i> 새 모델 업로드</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="upload-area" id="dropArea">
+                                    <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
+                                    <h4>모델 파일을 여기에 드래그하세요</h4>
+                                    <p class="text-muted">또는 클릭하여 파일 선택</p>
+                                    <p class="small text-muted">지원 파일 형식: .pt (PyTorch 모델 파일)</p>
+                                    <input type="file" id="fileInput" accept=".pt" style="display: none;">
+                                </div>
+                                
+                                <form id="uploadForm" enctype="multipart/form-data">
+                                    <div class="mb-3">
+                                        <label for="modelName" class="form-label">모델 이름 (선택사항)</label>
+                                        <input type="text" class="form-control" id="modelName" placeholder="모델을 구분할 수 있는 이름을 입력하세요">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="modelDescription" class="form-label">모델 설명 (선택사항)</label>
+                                        <textarea class="form-control" id="modelDescription" rows="3" placeholder="모델에 대한 설명을 입력하세요 (학습 데이터, 성능 등)"></textarea>
+                                    </div>
+                                    <div class="d-grid">
+                                        <button type="submit" class="btn btn-primary" id="uploadBtn">
+                                            <i class="fas fa-upload me-2"></i> 모델 업로드
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- 사용 가능한 모델 목록 -->
+                        <div class="card mb-4">
+                            <div class="card-header bg-info text-white">
+                                <h5 class="mb-0"><i class="fas fa-list"></i> 사용 가능한 모델 목록</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="modelsList">
+                                    <div class="d-flex justify-content-center">
+                                        <div class="spinner-border text-info" role="status">
+                                            <span class="visually-hidden">로딩 중...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                    tabContent.innerHTML = modelHTML;
+                    // 모델 관리 페이지 초기화
+                    initModelManagement();
+                    return;
+                    
+                case 'speaker-management':
+                    // 스피커 관리 페이지 내용
+                    const speakerHTML = `
+                    <div class="container container-main">
+                        <!-- 알림 영역 -->
+                        <div id="alertContainer"></div>
+                        
+                        <!-- 메인 컨트롤 패널 -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card shadow-sm">
+                                    <div class="card-header bg-gradient-primary text-white">
+                                        <h5 class="mb-0"><i class="fas fa-gamepad"></i> 스피커 컨트롤 패널</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <!-- 연결 관리 -->
+                                            <div class="col-md-4">
+                                                <div class="card border-0 shadow-sm h-100">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title border-bottom pb-2">
+                                                            <i class="fas fa-plug text-primary"></i> 서버 연결
+                                                        </h5>
+                                                        <div class="alert" id="connectionStatus" role="alert">
+                                                            <strong>상태:</strong> <span id="statusText">확인 중...</span>
+                                                        </div>
+                                                        <form id="serverConnectForm">
+                                                            <div class="row mb-3">
+                                                                <div class="col-md-8">
+                                                                    <input type="text" class="form-control" id="serverAddress" placeholder="서버 주소 (예: 192.168.0.10)" value="192.168.219.15">
+                                                                </div>
+                                                                <div class="col-md-4">
+                                                                    <input type="number" class="form-control" id="serverPort" placeholder="포트" value="9090">
+                                                                </div>
+                                                            </div>
+                                                            <div class="d-flex gap-2">
+                                                                <button type="submit" class="btn btn-primary flex-grow-1">
+                                                                    <i class="fas fa-plug"></i> 연결
+                                                                </button>
+                                                                <button type="button" class="btn btn-danger flex-grow-1" id="disconnectButton">
+                                                                    <i class="fas fa-unlink"></i> 해제
+                                                                </button>
+                                                            </div>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- 음원 제어 -->
+                                            <div class="col-md-4">
+                                                <div class="card border-0 shadow-sm h-100">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title border-bottom pb-2">
+                                                            <i class="fas fa-music text-primary"></i> 음원 제어
+                                                        </h5>
+                                                        <div class="mb-3">
+                                                            <label for="quickSoundSelect" class="form-label">빠른 음원 선택:</label>
+                                                            <select class="form-select" id="quickSoundSelect">
+                                                                <option value="" selected>음원을 선택하세요</option>
+                                                                <option value="0">Sound 0</option>
+                                                                <option value="1">Sound 1</option>
+                                                            </select>
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <div class="form-check form-switch">
+                                                                <input class="form-check-input" type="checkbox" id="repeatModeSwitch">
+                                                                <label class="form-check-label" for="repeatModeSwitch">반복 재생</label>
+                                                            </div>
+                                                        </div>
+                                                        <div class="d-flex gap-2">
+                                                            <button id="quickPlayBtn" class="btn btn-success flex-grow-1">
+                                                                <i class="fas fa-play"></i> 재생
+                                                            </button>
+                                                            <button id="quickStopBtn" class="btn btn-danger flex-grow-1">
+                                                                <i class="fas fa-stop"></i> 정지
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- 볼륨 제어 -->
+                                            <div class="col-md-4">
+                                                <div class="card border-0 shadow-sm h-100">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title border-bottom pb-2">
+                                                            <i class="fas fa-volume-up text-primary"></i> 볼륨 제어
+                                                        </h5>
+                                                        <div class="mb-3">
+                                                            <label for="volumeSlider" class="form-label">볼륨: <span id="volumeValue">50</span>%</label>
+                                                            <input type="range" class="form-range" min="0" max="100" value="50" id="volumeSlider">
+                                                        </div>
+                                                        <div class="d-flex justify-content-between">
+                                                            <button class="btn btn-outline-secondary btn-sm" id="volumeBtn20">20%</button>
+                                                            <button class="btn btn-outline-secondary btn-sm" id="volumeBtn50">50%</button>
+                                                            <button class="btn btn-outline-secondary btn-sm" id="volumeBtn80">80%</button>
+                                                            <button class="btn btn-outline-secondary btn-sm" id="volumeBtn100">100%</button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                    tabContent.innerHTML = speakerHTML;
+                    // 스피커 관리 페이지 초기화
+                    initSpeakerManagement();
+                    return;
+                    
+                case 'azimuth-setting':
+                    // 가드존 설정 페이지 내용
+                    const azimuthHTML = `
+                    <div class="container container-main">
+                        <!-- Guard Zone 설정 섹션 추가 -->
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <div class="card">
+                                    <div class="card-header bg-primary text-white">
+                                        <h5 class="mb-0">
+                                            <i class="fas fa-shield-alt"></i> Guard Zone 설정
+                                        </h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <p>카메라 화면에서 객체 감지를 적용할 영역을 드래그하여 지정하세요. 지정된 영역 외의 부분에서는 객체가 감지되지 않습니다.</p>
+                                        
+                                        <div class="guard-zone-container">
+                                            <canvas id="guardZoneCanvas" width="640" height="480"></canvas>
+                                            <div class="guard-zone-controls">
+                                                <div>
+                                                    <button type="button" class="btn btn-secondary" id="resetGuardZone">초기화</button>
+                                                    <button type="button" class="btn btn-info" id="previewGuardZone">미리보기</button>
+                                                </div>
+                                                <button type="button" class="btn btn-primary" id="saveGuardZone">Guard Zone 저장</button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="form-check form-switch mt-3">
+                                            <input class="form-check-input" type="checkbox" id="enableGuardZone">
+                                            <label class="form-check-label" for="enableGuardZone">Guard Zone 활성화</label>
+                                        </div>
+                                        
+                                        <div class="alert alert-info mt-3">
+                                            <i class="fas fa-info-circle"></i> 카메라를 선택하면 해당 카메라의 실시간 영상이 표시됩니다.
+                                        </div>
+                                        
+                                        <div class="row mt-3">
+                                            <div class="col-md-6">
+                                                <div class="form-group">
+                                                    <label for="guardZoneCamera">카메라 선택</label>
+                                                    <select class="form-select" id="guardZoneCamera">
+                                                        <option value="">카메라를 선택하세요</option>
+                                                        <!-- 카메라 목록은 자바스크립트로 로드됩니다 -->
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                    tabContent.innerHTML = azimuthHTML;
+                    // 가드존 설정 페이지 초기화
+                    initAzimuthSetting();
+                    return;
+                    
+                case 'ptz-controller':
+                    // PTZ 컨트롤러 페이지 내용
+                    const ptzHTML = `
+                    <div class="container container-main">
+                        <h1 class="mb-4">PTZ 조류 추적 컨트롤러</h1>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle"></i> 이 페이지에서는 PTZ 카메라를 제어하고 조류 추적 기능을 활성화할 수 있습니다.
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-8">
+                                <!-- 카메라 선택 -->
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <h5 class="mb-0">카메라 선택</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <select class="form-select" id="cameraSelect">
+                                            <option value="">카메라를 선택하세요</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <!-- 카메라 피드 -->
+                                <div class="camera-feed" id="cameraFeed">
+                                    <p>카메라를 선택하면 여기에 영상이 표시됩니다</p>
+                                </div>
+                                
+                                <!-- 기본 PTZ 컨트롤 -->
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <h5 class="mb-0">기본 PTZ 컨트롤</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-7">
+                                                <div class="ptz-controls">
+                                                    <div class="control-group">
+                                                        <button class="btn btn-outline-primary ptz-btn" data-direction="UP">
+                                                            <i class="fas fa-chevron-up"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="control-group">
+                                                        <button class="btn btn-outline-primary ptz-btn" data-direction="LEFT">
+                                                            <i class="fas fa-chevron-left"></i>
+                                                        </button>
+                                                        <button class="btn btn-outline-secondary ptz-btn ptz-center-btn" data-direction="HOME">
+                                                            <i class="fas fa-home"></i>
+                                                        </button>
+                                                        <button class="btn btn-outline-primary ptz-btn" data-direction="RIGHT">
+                                                            <i class="fas fa-chevron-right"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="control-group">
+                                                        <button class="btn btn-outline-primary ptz-btn" data-direction="DOWN">
+                                                            <i class="fas fa-chevron-down"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-5">
+                                                <div class="zoom-controls">
+                                                    <div class="mb-3">
+                                                        <button class="btn btn-outline-primary ptz-btn w-100" data-direction="ZOOM_IN">
+                                                            <i class="fas fa-search-plus"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <button class="btn btn-outline-primary ptz-btn w-100" data-direction="ZOOM_OUT">
+                                                            <i class="fas fa-search-minus"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <!-- 위치 정보 -->
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <h5 class="mb-0">위치 정보</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="position-info">
+                                            <div>
+                                                <strong>팬(Pan):</strong> <span id="panValue">-</span>
+                                            </div>
+                                            <div>
+                                                <strong>틸트(Tilt):</strong> <span id="tiltValue">-</span>
+                                            </div>
+                                            <div>
+                                                <strong>줌(Zoom):</strong> <span id="zoomValue">-</span>
+                                            </div>
+                                        </div>
+                                        <button id="getPositionBtn" class="btn btn-primary w-100">
+                                            <i class="fas fa-sync-alt"></i> 현재 위치 가져오기
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- 추적 설정 -->
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <h5 class="mb-0">조류 추적 설정</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="tracking-panel">
+                                            <div class="mb-3">
+                                                <button id="autoTrackingBtn" class="btn btn-primary w-100">
+                                                    <i class="fas fa-crosshairs"></i> 자동 추적 시작
+                                                </button>
+                                            </div>
+                                            <div class="mb-3">
+                                                <button id="stopTrackingBtn" class="btn btn-danger w-100" disabled>
+                                                    <i class="fas fa-stop"></i> 추적 중지
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                    tabContent.innerHTML = ptzHTML;
+                    // PTZ 컨트롤러 페이지 초기화
+                    initPtzController();
+                    return;
+                
+                default:
+                    tabContent.innerHTML = `
+                        <div class="alert alert-warning">
+                            <h4>알 수 없는 탭</h4>
+                            <p>요청한 탭 컨텐츠를 찾을 수 없습니다.</p>
+                        </div>
+                    `;
+                    return;
+            }
+        }
+
+        // 탭별 특정 기능 초기화
+        function initTabSpecificFunctions(tabId) {
+            switch(tabId) {
+                case 'camera-management':
+                    initCameraManagement();
+                    break;
+                case 'db-management':
+                    initDbManagement();
+                    break;
+                case 'model-management':
+                    initModelManagement();
+                    break;
+                case 'speaker-management':
+                    initSpeakerManagement();
+                    break;
+                case 'azimuth-setting':
+                    initAzimuthSetting();
+                    break;
+                case 'ptz-controller':
+                    initPtzController();
+                    break;
+            }
+        }
+
+        // 탭별 초기화 함수 구현
+        function initCameraManagement() {
+            console.log('카메라 관리 초기화');
+            // 카메라 목록 로드
+            $.ajax({
+                url: '/api/cameras/',
+                type: 'GET',
+                success: function(response) {
+                    // 카메라 목록 표시 로직
+                    const cameraList = $('#cameraList');
+                    // 기존 코드에서 가져온 카메라 목록 표시 로직
+                }
+            });
+        }
+
+        function initDbManagement() {
+            console.log('데이터베이스 관리 초기화');
+            // 날짜 기본값 설정
+            const today = new Date();
+            const lastMonth = new Date();
+            lastMonth.setMonth(today.getMonth() - 1);
+            
+            document.getElementById('detectionDateTo').valueAsDate = today;
+            document.getElementById('detectionDateFrom').valueAsDate = lastMonth;
+            
+            // 기본 데이터 로드
+            fetch('/api/detections/filtered/?per_page=100&sort_by=date_desc')
+                .then(response => response.json())
+                .then(data => {
+                    // 데이터 표시 로직
+                });
+        }
+
+        function initModelManagement() {
+            console.log('모델 관리 초기화');
+            // 현재 모델 정보 및 사용 가능한 모델 목록 로드
+            fetch('/api/yolo/info/')
+                .then(response => response.json())
+                .then(data => {
+                    // 모델 정보 표시 로직
+                });
+            
+            fetch('/api/yolo/available-models/')
+                .then(response => response.json())
+                .then(data => {
+                    // 모델 목록 표시 로직
+                });
+        }
+
+        function initSpeakerManagement() {
+            console.log('스피커 관리 초기화');
+            // 스피커 상태 로드
+            $.ajax({
+                url: '/camera/speaker/status/',
+                type: 'GET',
+                success: function(response) {
+                    // 스피커 상태 표시 로직
+                }
+            });
+        }
+
+        function initAzimuthSetting() {
+            console.log('가드존 설정 초기화');
+            // 캔버스 초기화
+            const canvas = document.getElementById('guardZoneCanvas');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#333';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+            
+            // 카메라 목록 로드
+            $.ajax({
+                url: '/api/cameras/',
+                type: 'GET',
+                success: function(response) {
+                    // 카메라 목록 표시 로직
+                }
+            });
+        }
+
+        function initPtzController() {
+            console.log('PTZ 컨트롤러 초기화');
+            // 카메라 목록 로드
+            $.ajax({
+                url: '/api/cameras/',
+                type: 'GET',
+                success: function(response) {
+                    // 카메라 목록 표시 로직
+                }
+            });
+        }
+    </script>
+</body>
+</html>

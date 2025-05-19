@@ -18,6 +18,7 @@ class WeatherData(models.Model):
     precipitation = models.FloatField(verbose_name="강수량(mm)", null=True, blank=True)
     precipitation_type = models.CharField(verbose_name="강수 형태", max_length=20, null=True, blank=True)
     air_quality = models.CharField(verbose_name="대기질", max_length=20, null=True, blank=True)
+    visibility = models.FloatField(verbose_name="시정(km)", null=True, blank=True)
     
     # 예보 정보
     forecast_temperature = models.FloatField(verbose_name="예보 기온(°C)", null=True, blank=True)

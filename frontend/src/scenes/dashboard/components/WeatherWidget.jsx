@@ -1,4 +1,4 @@
-import { Box, Grid, Typography, useTheme, Paper, CircularProgress, Divider } from '@mui/material';
+import { Box, Grid, Typography, useTheme, Paper, CircularProgress, Divider, Alert } from '@mui/material';
 import { translate } from '../../../utils/i18n';
 import { 
   Thermostat as ThermostatIcon,
@@ -12,28 +12,40 @@ import {
   Cloud as CloudIcon,
   Thunderstorm as StormIcon,
   AcUnit as SnowIcon,
-  Water as RainIcon
+  Water as RainIcon,
+  ErrorOutline as ErrorIcon
 } from '@mui/icons-material';
 
 const WeatherWidget = ({ weatherData, weatherLoading, language }) => {
   // 날씨 상태에 따른 아이콘 반환
-  const getWeatherIcon = (condition) => {
-    switch (condition) {
-      case 'clear':
-        return <SunnyIcon sx={{ color: '#FFD54F' }} />;
-      case 'night':
-        return <NightIcon sx={{ color: '#90CAF9' }} />;
-      case 'cloudy':
-        return <CloudIcon sx={{ color: '#B0BEC5' }} />;
-      case 'storm':
-        return <StormIcon sx={{ color: '#7E57C2' }} />;
-      case 'snow':
-        return <SnowIcon sx={{ color: '#E1F5FE' }} />;
-      case 'rain':
-        return <RainIcon sx={{ color: '#4FC3F7' }} />;
-      default:
-        return <SunnyIcon sx={{ color: '#FFD54F' }} />;
+  const getWeatherIcon = (weatherStatus, humidity, precipitation) => {
+    // 백엔드에서 제공하는 날씨 상태에 따라 아이콘 반환
+    if (weatherStatus) {
+      switch (weatherStatus) {
+        case '맑음':
+          return <SunnyIcon sx={{ color: '#FFD54F' }} />;
+        case '흐림':
+          return <CloudIcon sx={{ color: '#B0BEC5' }} />;
+        case '비':
+          return <StormIcon sx={{ color: '#4FC3F7' }} />;
+        case '눈':
+          return <SnowIcon sx={{ color: '#E1F5FE' }} />;
+        case '비/눈':
+        case '눈/비':
+          return <StormIcon sx={{ color: '#7E57C2' }} />;
+        default:
+          break;
+      }
     }
+    
+    // 백엔드에서 상태 정보가 없는 경우 직접 판단
+    if (precipitation > 0) {
+      return <RainIcon sx={{ color: '#4FC3F7' }} />;
+    } 
+    if (humidity >= 80) {
+      return <CloudIcon sx={{ color: '#B0BEC5' }} />;
+    }
+    return <SunnyIcon sx={{ color: '#FFD54F' }} />;
   };
 
   return (
@@ -51,32 +63,52 @@ const WeatherWidget = ({ weatherData, weatherLoading, language }) => {
           {translate('현재 날씨', 'Current Weather', language)}
         </Typography>
         <Typography variant="caption" color="#4fc3f7">
-          {weatherData?.timestamp ? new Date(weatherData.timestamp).toLocaleTimeString() : '--:--'}
+          {weatherData?.current?.formatted_time || (weatherData?.timestamp ? new Date(weatherData.timestamp).toLocaleTimeString() : '--:--')}
         </Typography>
       </Box>
       
-      {/* 위치 정보 */}
+      {/* 위치 및 관측소 정보 */}
       <Typography variant="body2" color="#aaa" sx={{ mb: 2 }}>
-        {weatherData?.location || translate('데이터 로드 중...', 'Loading data...', language)}
+        {weatherLoading 
+          ? translate('데이터 로드 중...', 'Loading data...', language)
+          : weatherData?.current?.observation_station || '소각시도 (영광 관측소)'
+        }
       </Typography>
       
       {weatherLoading ? (
         <Box display="flex" justifyContent="center" alignItems="center" py={2}>
           <CircularProgress size={30} />
         </Box>
+      ) : weatherData === null ? (
+        <Alert 
+          severity="info" 
+          icon={<ErrorIcon />}
+          sx={{ 
+            backgroundColor: 'rgba(13, 71, 161, 0.15)', 
+            color: '#90CAF9',
+            border: '1px solid rgba(13, 71, 161, 0.3)'
+          }}
+        >
+          {translate(
+            '날씨 데이터를 가져올 수 없습니다. 기상청 API에 연결할 수 없습니다.',
+            'Unable to fetch weather data. Cannot connect to weather API.',
+            language
+          )}
+        </Alert>
       ) : (
         <>
           <Box display="flex" justifyContent="space-between" alignItems="center">
             <Box>
               <Typography variant="h3">
-                {weatherData?.current?.temperature ? `${weatherData.current.temperature.toFixed(1)}°` : '--°'}
-              </Typography>
-              <Typography variant="body2" color="#aaa">
-                {translate('체감온도', 'Feels like', language)}: {weatherData?.current?.feels_like ? `${weatherData.current.feels_like.toFixed(1)}°` : '--°'}
+                {weatherData?.current?.temperature !== null ? `${weatherData.current.temperature.toFixed(1)}°` : '--°'}
               </Typography>
             </Box>
             <Box sx={{ fontSize: '50px' }}>
-              {getWeatherIcon(weatherData?.current?.weather_condition)}
+              {getWeatherIcon(
+                weatherData?.current?.weather_status,
+                weatherData?.current?.humidity || 0,
+                weatherData?.current?.precipitation || 0
+              )}
             </Box>
           </Box>
           
@@ -87,7 +119,7 @@ const WeatherWidget = ({ weatherData, weatherLoading, language }) => {
               <Box display="flex" alignItems="center">
                 <OpacityIcon sx={{ mr: 1, color: '#64B5F6' }} fontSize="small" />
                 <Typography variant="body2">
-                  {translate('습도', 'Humidity', language)}: {weatherData?.current?.humidity || '--'}%
+                  {translate('습도', 'Humidity', language)}: {weatherData?.current?.humidity !== null ? `${weatherData.current.humidity}%` : '--'}
                 </Typography>
               </Box>
             </Grid>
@@ -95,7 +127,7 @@ const WeatherWidget = ({ weatherData, weatherLoading, language }) => {
               <Box display="flex" alignItems="center">
                 <AirIcon sx={{ mr: 1, color: '#81D4FA' }} fontSize="small" />
                 <Typography variant="body2">
-                  {translate('풍속', 'Wind', language)}: {weatherData?.current?.wind_speed || '--'} m/s
+                  {translate('풍속', 'Wind', language)}: {weatherData?.current?.wind_speed !== null ? `${weatherData.current.wind_speed} m/s` : '--'}
                 </Typography>
               </Box>
             </Grid>
@@ -103,7 +135,7 @@ const WeatherWidget = ({ weatherData, weatherLoading, language }) => {
               <Box display="flex" alignItems="center">
                 <VisibilityIcon sx={{ mr: 1, color: '#B3E5FC' }} fontSize="small" />
                 <Typography variant="body2">
-                  {translate('시정', 'Visibility', language)}: {weatherData?.current?.visibility || '--'} km
+                  {translate('시정', 'Visibility', language)}: {weatherData?.current?.visibility !== null ? `${weatherData.current.visibility} km` : '--'}
                 </Typography>
               </Box>
             </Grid>
@@ -111,7 +143,7 @@ const WeatherWidget = ({ weatherData, weatherLoading, language }) => {
               <Box display="flex" alignItems="center">
                 <RainIcon sx={{ mr: 1, color: '#4FC3F7' }} fontSize="small" />
                 <Typography variant="body2">
-                  {translate('강수량', 'Precip.', language)}: {weatherData?.current?.precipitation || '0'} mm
+                  {translate('강수량', 'Precip.', language)}: {weatherData?.current?.precipitation !== null ? `${weatherData.current.precipitation} mm` : '0 mm'}
                 </Typography>
               </Box>
             </Grid>
